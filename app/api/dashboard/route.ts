@@ -1,0 +1,419 @@
+import { NextRequest, NextResponse } from "next/server";
+import pool from "@/lib/db";
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+
+  // ── Params ──────────────────────────────────────────────────────────────────
+  const search = searchParams.get("search");
+  const city = searchParams.get("city");
+  const serviceType = searchParams.get("serviceType");
+  const status = searchParams.get("status");
+  const isExport = searchParams.get("export") === "1";
+
+  // Contact toggles
+  const hasPhone = searchParams.get("hasPhone") === "1";
+  const hasLine = searchParams.get("hasLine") === "1";
+  const hasFb = searchParams.get("hasFb") === "1";
+  const hasIg = searchParams.get("hasIg") === "1";
+  const hasEmail = searchParams.get("hasEmail") === "1";
+  const hasBooking = searchParams.get("hasBooking");
+  const noted = searchParams.get("noted");
+
+  // Pagination (ไม่ใช้ตอน export)
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = 50;
+  const offset = (page - 1) * limit;
+
+  try {
+    // ── WHERE conditions ─────────────────────────────────────────────────────
+    const conditions: string[] = ["1=1"];
+    const values: unknown[] = [];
+    let i = 1;
+
+    // Search: ชื่อร้าน หรือ place_id
+    if (search) {
+      conditions.push(`(p.name ILIKE $${i} OR p.place_id ILIKE $${i + 1})`);
+      values.push(`%${search}%`, `%${search}%`);
+      i += 2;
+    }
+
+    // Dropdown filters
+    if (city) {
+      conditions.push(`p.city = $${i++}`);
+      values.push(city);
+    }
+    if (serviceType) {
+      const SERVICE_TYPE_MAP: Record<string, string[]> = {
+        restaurant_food: [
+          "restaurant",
+          "thai_restaurant",
+          "seafood_restaurant",
+          "noodle_shop",
+          "family_restaurant",
+          "fast_food_restaurant",
+          "buffet_restaurant",
+          "chinese_restaurant",
+          "japanese_restaurant",
+          "korean_restaurant",
+          "italian_restaurant",
+          "indian_restaurant",
+          "halal_restaurant",
+          "dessert_restaurant",
+          "pizza_restaurant",
+          "steak_house",
+          "barbecue_restaurant",
+          "asian_restaurant",
+          "vietnamese_restaurant",
+          "sushi_restaurant",
+          "chicken_restaurant",
+          "brunch_restaurant",
+          "breakfast_restaurant",
+          "hot_pot_restaurant",
+          "hamburger_restaurant",
+          "dim_sum_restaurant",
+          "yakiniku_restaurant",
+          "korean_barbecue_restaurant",
+          "ramen_restaurant",
+          "western_restaurant",
+          "fusion_restaurant",
+          "asian_fusion_restaurant",
+          "japanese_izakaya_restaurant",
+          "chinese_noodle_restaurant",
+          "vegetarian_restaurant",
+          "vegan_restaurant",
+          "fine_dining_restaurant",
+          "french_restaurant",
+          "turkish_restaurant",
+          "mexican_restaurant",
+          "american_restaurant",
+          "mediterranean_restaurant",
+          "kebab_shop",
+          "sandwich_shop",
+          "salad_shop",
+          "bistro",
+          "diner",
+          "food_court",
+          "meal_takeaway",
+          "meal_delivery",
+          "food",
+          "food_store",
+          "food_drink",
+          "chicken_wings_restaurant",
+          "dumpling_restaurant",
+          "cantonese_restaurant",
+          "lebanese_restaurant",
+          "middle_eastern_restaurant",
+          "burmese_restaurant",
+          "indonesian_restaurant",
+          "greek_restaurant",
+          "german_restaurant",
+          "russian_restaurant",
+          "european_restaurant",
+          "eastern_european_restaurant",
+          "taiwanese_restaurant",
+          "tonkatsu_restaurant",
+          "japanese_curry_restaurant",
+          "soup_restaurant",
+          "snack_bar",
+          "deli",
+          "cafeteria",
+        ],
+        cafe_drinks: [
+          "cafe",
+          "coffee_shop",
+          "coffee_roastery",
+          "coffee_stand",
+          "bakery",
+          "cake_shop",
+          "dessert_shop",
+          "pastry_shop",
+          "donut_shop",
+          "ice_cream_shop",
+          "candy_store",
+          "confectionery",
+          "juice_shop",
+          "tea_house",
+          "cat_cafe",
+          "dog_cafe",
+          "bagel_shop",
+        ],
+        bar_nightlife: [
+          "bar",
+          "pub",
+          "cocktail_bar",
+          "night_club",
+          "sports_bar",
+          "lounge_bar",
+          "wine_bar",
+          "beer_garden",
+          "bar_and_grill",
+          "brewpub",
+          "brewery",
+          "hookah_bar",
+          "irish_pub",
+          "karaoke",
+          "live_music_venue",
+        ],
+        accommodation: [
+          "hotel",
+          "resort_hotel",
+          "hostel",
+          "guest_house",
+          "lodging",
+          "inn",
+          "private_guest_room",
+          "extended_stay_hotel",
+          "farmstay",
+          "bed_and_breakfast",
+          "cottage",
+          "campground",
+          "camping_cabin",
+          "motel",
+          "apartment_building",
+          "apartment_complex",
+          "condominium_complex",
+          "rest_stop",
+        ],
+        health_beauty: [
+          "spa",
+          "massage_spa",
+          "massage",
+          "sauna",
+          "public_bath",
+          "hair_salon",
+          "beauty_salon",
+          "nail_salon",
+          "barber_shop",
+          "beautician",
+          "skin_care_clinic",
+          "makeup_artist",
+          "fitness_center",
+          "gym",
+          "yoga_studio",
+          "wellness_center",
+          "swimming_pool",
+          "sports_coaching",
+          "sports_club",
+          "sports_complex",
+          "sports_activity_location",
+          "sports_school",
+          "medical_clinic",
+          "doctor",
+          "health",
+          "health_food_store",
+          "pet_care",
+        ],
+        travel_tourism: [
+          "tour_agency",
+          "travel_agency",
+          "tourist_attraction",
+          "tourist_information_center",
+          "ferry_service",
+          "scenic_spot",
+          "historical_landmark",
+          "botanical_garden",
+          "zoo",
+          "wildlife_park",
+          "water_park",
+          "adventure_sports_center",
+          "go_karting_venue",
+          "race_course",
+          "fishing_pond",
+          "fishing_pier",
+          "fishing_charter",
+          "golf_course",
+          "farm",
+          "ranch",
+        ],
+        other: [
+          "store",
+          "market",
+          "shopping_mall",
+          "grocery_store",
+          "supermarket",
+          "convenience_store",
+          "liquor_store",
+          "clothing_store",
+          "cosmetics_store",
+          "gift_shop",
+          "home_goods_store",
+          "furniture_store",
+          "electronics_store",
+          "pet_store",
+          "pet_boarding_service",
+          "florist",
+          "toy_store",
+          "butcher_shop",
+          "gas_station",
+          "car_wash",
+          "car_repair",
+          "auto_parts_store",
+          "bicycle_store",
+          "wholesaler",
+          "warehouse_store",
+          "manufacturer",
+          "supplier",
+          "general_contractor",
+          "corporate_office",
+          "business_center",
+          "coworking_space",
+          "real_estate_agency",
+          "educational_institution",
+          "community_center",
+          "cultural_center",
+          "association_or_organization",
+          "non_profit_organization",
+          "event_venue",
+          "banquet_hall",
+          "wedding_venue",
+          "performing_arts_theater",
+          "concert_hall",
+          "amusement_center",
+          "playground",
+          "catering_service",
+          "shipping_service",
+          "food_delivery",
+          "pizza_delivery",
+          "service",
+          "art_gallery",
+          "art_studio",
+        ],
+      };
+      const types = SERVICE_TYPE_MAP[serviceType];
+      if (types) {
+        conditions.push(`p.service_type = ANY($${i++})`);
+        values.push(types);
+      }
+    }
+    if (status) {
+      conditions.push(`p.business_status = $${i++}`);
+      values.push(status);
+    }
+
+    // Contact toggle filters (EXISTS subquery — ไม่ให้กระทบ GROUP BY)
+    if (hasPhone) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM place_phones ph2
+        WHERE ph2.place_id = p.place_id AND ph2.deleted_at IS NULL
+      )`);
+    }
+    if (hasLine) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM place_lines pl2
+        WHERE pl2.place_id = p.place_id
+      )`);
+    }
+    if (hasFb) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM place_facebooks pfb2
+        WHERE pfb2.place_id = p.place_id
+      )`);
+    }
+    if (hasIg) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM place_instagrams pig2
+        WHERE pig2.place_id = p.place_id
+      )`);
+    }
+    if (hasEmail) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM place_emails pe2
+        WHERE pe2.place_id = p.place_id
+      )`);
+    }
+    if (hasBooking === "yes") conditions.push(`p.has_booking = TRUE`);
+    if (hasBooking === "no")
+      conditions.push(`(p.has_booking = FALSE OR p.has_booking IS NULL)`);
+    if (noted === "yes")
+      conditions.push(
+        `EXISTS (SELECT 1 FROM place_notes n2 WHERE n2.place_id = p.place_id)`,
+      );
+    if (noted === "no")
+      conditions.push(
+        `NOT EXISTS (SELECT 1 FROM place_notes n2 WHERE n2.place_id = p.place_id)`,
+      );
+    const where = conditions.join(" AND ");
+
+    // ── Main SELECT ──────────────────────────────────────────────────────────
+    const paginationClause = isExport ? "" : `LIMIT ${limit} OFFSET ${offset}`;
+
+    const { rows } = await pool.query(
+      `
+      SELECT
+        p.place_id,
+        p.name,
+        p.city,
+        p.service_type,
+        p.business_status,
+        p.rating,
+        p.google_map_url,
+        p.has_booking,
+
+        -- Primary phone
+        MAX(CASE WHEN ph.is_primary = TRUE THEN ph.number END) AS phone,
+        -- Secondary phone (non-primary)
+        MAX(CASE WHEN (ph.is_primary IS NULL OR ph.is_primary = FALSE) THEN ph.number END) AS phone2,
+
+        MAX(pl.line_id)   AS line_id,
+        MAX(pe.address)   AS email,
+        MAX(pfb.url)      AS facebook_url,
+        MAX(pig.handle)   AS instagram_handle,
+
+        -- Last note (subquery)
+        (SELECT n.note FROM place_notes n
+          WHERE n.place_id = p.place_id
+          ORDER BY n.created_at DESC LIMIT 1) AS last_note,
+
+        (SELECT u.name FROM place_notes n
+          JOIN users u ON u.id = n.user_id
+          WHERE n.place_id = p.place_id
+          ORDER BY n.created_at DESC LIMIT 1) AS last_note_by,
+
+        (SELECT n.created_at FROM place_notes n
+          WHERE n.place_id = p.place_id
+          ORDER BY n.created_at DESC LIMIT 1) AS last_note_at,
+
+        -- Pending request count
+        (SELECT COUNT(*) FROM contact_edit_requests r
+          WHERE r.place_id = p.place_id
+          AND r.status = 'pending') AS pending_requests
+
+      FROM places p
+      LEFT JOIN place_phones     ph  ON ph.place_id  = p.place_id AND ph.deleted_at IS NULL
+      LEFT JOIN place_lines      pl  ON pl.place_id  = p.place_id
+      LEFT JOIN place_emails     pe  ON pe.place_id  = p.place_id
+      LEFT JOIN place_facebooks  pfb ON pfb.place_id = p.place_id
+      LEFT JOIN place_instagrams pig ON pig.place_id = p.place_id
+      WHERE ${where}
+      GROUP BY
+        p.place_id, p.name, p.city, p.service_type,
+        p.business_status, p.rating, p.google_map_url, p.has_booking,
+        p.scraped_at
+      ORDER BY p.scraped_at DESC
+      ${paginationClause}
+    `,
+      values,
+    );
+
+    // ── Count (ไม่ทำตอน export เพราะไม่จำเป็น) ────────────────────────────
+    let total = rows.length;
+    if (!isExport) {
+      const countResult = await pool.query(
+        `SELECT COUNT(*) FROM places p WHERE ${where}`,
+        values,
+      );
+      total = parseInt(countResult.rows[0].count);
+    }
+
+    return NextResponse.json({
+      data: rows,
+      total,
+      page: isExport ? 1 : page,
+      limit: isExport ? total : limit,
+    });
+  } catch (err) {
+    console.error("[api/dashboard] error:", err);
+    return NextResponse.json({ error: "DB error" }, { status: 500 });
+  }
+}
