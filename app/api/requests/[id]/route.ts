@@ -16,8 +16,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { action, final_value } = body;
-
+    const { action, final_value, reject_reason } = body;
     // ลบ reviewed_by ออกจาก body — ใช้จาก cookie แทน
     if (!action) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 });
@@ -75,9 +74,19 @@ export async function PATCH(
 
       if (action === "cancelled") {
         await client.query(
-          `UPDATE contact_edit_requests SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW() WHERE id = $2`,
+          `UPDATE contact_edit_requests 
+     SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW() 
+     WHERE id = $2`,
           [user.id, id],
         );
+
+        // ── เพิ่มตรงนี้ ──
+        await client.query(
+          `INSERT INTO contact_edit_logs (request_id, action, final_value, approved_by, reject_reason)
+ VALUES ($1, 'rejected', NULL, $2, $3)`,
+          [id, user.id, reject_reason || null],
+        );
+
         await client.query("COMMIT");
         return NextResponse.json({ success: true, action: "cancelled" });
       }
@@ -108,6 +117,7 @@ export async function PATCH(
           request.field_type,
           valueToApply,
           request.old_value,
+          request.reason,
         );
       }
 
@@ -125,13 +135,14 @@ export async function PATCH(
       );
 
       await client.query(
-        `INSERT INTO contact_edit_logs (request_id, action, final_value, approved_by)
-         VALUES ($1, $2, $3, $4)`,
+        `INSERT INTO contact_edit_logs (request_id, action, final_value, approved_by, reject_reason)
+   VALUES ($1, $2, $3, $4, $5)`,
         [
           id,
           action,
           action === "deleted" || action === "rejected" ? null : valueToApply,
           user.id,
+          action === "rejected" ? reject_reason || null : null,
         ],
       );
 
@@ -165,7 +176,9 @@ async function applyUpsert(
   fieldType: string,
   newValue: string,
   oldValue: string | null,
+  reason?: string | null,
 ) {
+  if (!placeId) throw new Error("placeId is required"); // ✅ guard
   switch (fieldType) {
     case "phone":
     case "phone2": {
@@ -181,6 +194,41 @@ async function applyUpsert(
           [placeId, newValue, isPrimary],
         );
       }
+      break;
+    }
+    case "phone_new": {
+      let phoneNumber = newValue;
+      let phoneLabel: string | null = reason || null;
+
+      // ถ้า newValue เป็น JSON { number, label } ให้ parse ก่อน
+      try {
+        const parsed = JSON.parse(newValue);
+        if (parsed?.number) {
+          phoneNumber = parsed.number;
+          phoneLabel = parsed.label || null;
+        }
+      } catch {}
+
+      const normalized = phoneNumber.replace(/\D/g, "");
+      await client.query(
+        `INSERT INTO place_phones 
+     (place_id, number, normalized, label, category, confidence, is_primary, is_manual, added_by, source)
+     VALUES ($1, $2, $3, $4, 'business', 5, false, true, 'dashboard', 'manual')
+     ON CONFLICT DO NOTHING`,
+        [placeId, phoneNumber, normalized, phoneLabel],
+      );
+      break;
+    }
+    case "phone_edit": {
+      // new_value เป็น JSON { number, label }
+      const parsed = JSON.parse(newValue);
+      const normalized = parsed.number.replace(/\D/g, "");
+      await client.query(
+        `UPDATE place_phones 
+     SET number = $1, normalized = $2, label = $3, is_manual = true, updated_at = NOW()
+     WHERE place_id = $4 AND number = $5 AND deleted_at IS NULL`,
+        [parsed.number, normalized, parsed.label || null, placeId, oldValue],
+      );
       break;
     }
     case "line_oa":
@@ -201,15 +249,31 @@ async function applyUpsert(
     }
     case "line_url": {
       if (oldValue) {
+        // มีค่าเดิม → UPDATE row ที่ line_url ตรงกัน
         await client.query(
-          `UPDATE place_lines SET line_url = $1, updated_at = NOW() WHERE place_id = $2 AND line_url = $3`,
+          `UPDATE place_lines SET line_url = $1, updated_at = NOW()
+       WHERE place_id = $2 AND line_url = $3`,
           [newValue, placeId, oldValue],
         );
       } else {
-        await client.query(
-          `INSERT INTO place_lines (place_id, line_url, type) VALUES ($1, $2, 'oa') ON CONFLICT DO NOTHING`,
-          [placeId, newValue],
+        // ไม่มีค่าเดิม → UPDATE row type='oa' ก่อน ถ้าไม่มีค่อย INSERT
+        const { rowCount } = await client.query(
+          `UPDATE place_lines SET line_url = $1, updated_at = NOW()
+       WHERE place_id = $2
+         AND type = 'oa'
+         AND deleted_at IS NULL`,
+          [newValue, placeId],
         );
+        if (rowCount === 0) {
+          // ไม่มี row เลย → INSERT ใหม่ โดยใช้ line_url เป็น line_id (fallback)
+          await client.query(
+            `INSERT INTO place_lines (place_id, line_id, line_url, type, is_manual)
+         VALUES ($1, $2, $2, 'oa', true)
+         ON CONFLICT (place_id, line_id) DO UPDATE
+           SET line_url = EXCLUDED.line_url, updated_at = NOW()`,
+            [placeId, newValue],
+          );
+        }
       }
       break;
     }
@@ -302,6 +366,7 @@ async function applyUpsert(
       }
       break;
     }
+
     default:
       throw new Error(`Unknown field_type: ${fieldType}`);
   }
@@ -317,6 +382,7 @@ async function applyDelete(
   switch (fieldType) {
     case "phone":
     case "phone2":
+    case "phone_new":
       await client.query(
         `UPDATE place_phones SET deleted_at = NOW() WHERE place_id = $1 AND number = $2 AND deleted_at IS NULL`,
         [placeId, oldValue],

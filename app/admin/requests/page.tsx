@@ -1,8 +1,11 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+const REQUESTS_PER_PAGE = 9
 
 type Request = {
   id: string
@@ -23,11 +26,6 @@ type ConfirmState = {
   finalValue: string
 } | null
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const TEMP_ADMIN_ID = '98df5410-3fe5-4889-8e2f-e76fd759b999'
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('th-TH', {
     day: '2-digit', month: 'short', year: '2-digit',
@@ -38,14 +36,15 @@ function formatDate(iso: string) {
 
 function fieldLabel(f: string) {
   const map: Record<string, string> = {
-    phone: 'โทรศัพท์', phone2: 'โทรศัพท์ 2',
+    phone: 'โทรศัพท์ 1', phone2: 'โทรศัพท์ 2',
+    phone_new: '➕ เพิ่มเบอร์โทร',
+    phone_edit: '✏️ แก้ไขเบอร์โทร',
     line_oa: 'LINE OA', line_personal: 'LINE Personal', line_url: 'LINE URL',
     email: 'Email', facebook: 'Facebook', instagram: 'Instagram',
     messenger: 'Messenger', whatsapp: 'WhatsApp', telegram: 'Telegram',
   }
   return map[f] || f
 }
-
 // ─── Confirm Dialog ───────────────────────────────────────────────────────────
 
 function ConfirmDialog({
@@ -69,7 +68,7 @@ function ConfirmDialog({
     : 'bg-blue-600 hover:bg-blue-700'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
         <h3 className="text-base font-semibold text-gray-900 mb-1">ยืนยันการดำเนินการ</h3>
         <p className="text-sm text-gray-500 mb-4">
@@ -77,23 +76,25 @@ function ConfirmDialog({
         </p>
 
         <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm space-y-1.5">
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
             <span className="text-gray-400 w-20 shrink-0">Field</span>
             <span className="font-medium text-gray-700">{fieldLabel(request.field_type)}</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
             <span className="text-gray-400 w-20 shrink-0">ค่าเดิม</span>
             <span className="text-gray-500 line-through">{request.old_value || '—'}</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
             <span className="text-gray-400 w-20 shrink-0">ค่าใหม่</span>
-            <span className="font-medium text-gray-900">
-              {action === 'deleted' ? <span className="text-red-500">ลบออก</span> : finalValue}
+            <span className="font-medium text-gray-900 break-all">
+              {action === 'deleted'
+                ? <span className="text-red-500">ลบออก</span>
+                : formatPhoneValue(request.field_type, finalValue)}
             </span>
           </div>
         </div>
 
-        <div className="flex gap-2 justify-end">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             onClick={onCancel}
             disabled={loading}
@@ -115,6 +116,32 @@ function ConfirmDialog({
 }
 
 // ─── Request Card ─────────────────────────────────────────────────────────────
+function formatPhoneValue(fieldType: string, value: string) {
+  if (fieldType !== 'phone_edit' && fieldType !== 'phone_new') return value
+  try {
+    const parsed = JSON.parse(value)
+    if (!parsed || parsed.number === undefined) return value
+    const label = parsed.label ? ` (${parsed.label})` : ''
+    return `${parsed.number}${label}`
+  } catch {
+    return value
+  }
+}
+
+function FieldRow({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-1 border-b border-gray-200/80 py-2 last:border-b-0 sm:flex-row sm:gap-3">
+      <span className="w-28 shrink-0 text-gray-400">{label}</span>
+      <span className="min-w-0 flex-1">{children}</span>
+    </div>
+  )
+}
 
 function RequestCard({
   request,
@@ -127,45 +154,60 @@ function RequestCard({
 }) {
   const [editValue, setEditValue] = useState(request.new_value)
   const [showEdit, setShowEdit] = useState(false)
+  const [showReject, setShowReject] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const statusBadgeClass = request.status === 'pending'
+    ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+    : request.status === 'approved'
+      ? 'bg-blue-100 text-blue-800 border border-blue-300'
+      : 'bg-red-100 text-red-800 border border-red-300'
+
+  const statusBadgeLabel = request.status === 'pending'
+    ? ' Pending'
+    : request.status === 'approved'
+      ? ' Approved'
+      : '❌ Rejected'
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md sm:p-5">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <p className="font-semibold text-gray-900">{request.place_name}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{request.place_id}</p>
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <p className="break-words font-semibold text-gray-900">{request.place_name}</p>
+          <p className="mt-0.5 break-all text-xs text-gray-400">{request.place_id}</p>
         </div>
-        <span className="text-xs text-gray-400 whitespace-nowrap">{formatDate(request.created_at)}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadgeClass}`}>
+            {statusBadgeLabel}
+          </span>
+          <span className="text-xs text-gray-400 whitespace-nowrap">{formatDate(request.created_at)}</span>
+        </div>
       </div>
 
       {/* Field info */}
-      <div className="bg-gray-50 rounded-lg p-3 mb-3 text-sm space-y-1.5">
-        <div className="flex gap-2">
-          <span className="text-gray-400 w-24 shrink-0">Field</span>
+      <div className="mb-3 rounded-lg bg-gray-50 px-3 py-1 text-sm">
+        <FieldRow label="Field">
           <span className="font-medium text-gray-700">{fieldLabel(request.field_type)}</span>
-        </div>
-        <div className="flex gap-2">
-          <span className="text-gray-400 w-24 shrink-0">ค่าเดิม</span>
+        </FieldRow>
+        <FieldRow label="ค่าเดิม">
           <span className="text-gray-500 line-through">{request.old_value || '—'}</span>
-        </div>
-        <div className="flex gap-2">
-          <span className="text-gray-400 w-24 shrink-0">ค่าที่เสนอ</span>
+        </FieldRow>
+        <FieldRow label="ค่าที่เสนอ">
           {request.new_value === '' || request.new_value === null
             ? <span className="font-medium text-red-500">🗑️ คำขอลบ</span>
-            : <span className="font-medium text-blue-700">{request.new_value}</span>
+            : <span className="font-medium text-blue-700 break-all">
+              {formatPhoneValue(request.field_type, request.new_value)}
+            </span>
           }
-        </div>
+        </FieldRow>
         {request.reason && (
-          <div className="flex gap-2">
-            <span className="text-gray-400 w-24 shrink-0">เหตุผล</span>
+          <FieldRow label="เหตุผล">
             <span className="text-gray-600">{request.reason}</span>
-          </div>
+          </FieldRow>
         )}
-        <div className="flex gap-2">
-          <span className="text-gray-400 w-24 shrink-0">โดย</span>
+        <FieldRow label="โดย">
           <span className="text-gray-600">{request.requested_by_name}</span>
-        </div>
+        </FieldRow>
       </div>
 
       {/* Edit input (toggle) */}
@@ -181,7 +223,7 @@ function RequestCard({
       )}
 
       {/* Actions */}
-      {!readonly && <div className="flex gap-2 flex-wrap">
+      {!readonly && <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <button
           onClick={() => onAction(request, 'accepted', request.new_value)}
           className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700"
@@ -206,12 +248,43 @@ function RequestCard({
             ยกเลิก
           </button>
         )}
-        <button
-          onClick={() => onAction(request, 'rejected', '')}
-          className="px-3 py-1.5 bg-gray-100 text-gray-600 border border-gray-300 text-xs font-semibold rounded-lg hover:bg-gray-200"
-        >
-          ❌ Reject
-        </button>
+        {!showReject ? (
+          <button
+            onClick={() => setShowReject(true)}
+            className="px-3 py-1.5 bg-gray-100 text-gray-600 border border-gray-300 text-xs font-semibold rounded-lg hover:bg-gray-200"
+          >
+            ❌ Reject
+          </button>
+        ) : (
+          <div className="w-full mt-2 space-y-2">
+            <input
+              type="text"
+              placeholder="เหตุผลที่ reject (บังคับกรอก)"
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowReject(false); setRejectReason('') }}
+                className="px-3 py-1.5 border border-gray-200 text-gray-500 text-xs rounded-lg hover:bg-gray-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => {
+                  if (!rejectReason.trim()) return
+                  onAction(request, 'rejected', rejectReason.trim())
+                  setShowReject(false)
+                }}
+                disabled={!rejectReason.trim()}
+                className="px-3 py-1.5 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 disabled:opacity-50"
+              >
+                ยืนยัน Reject
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       }
     </div>
@@ -227,16 +300,38 @@ export default function AdminRequestsPage() {
   const [confirm, setConfirm] = useState<ConfirmState>(null)
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
 
   const fetchRequests = async () => {
-    setLoading(true)
     const res = await fetch(`/api/requests?status=${statusFilter}`)
     const json = await res.json()
     setRequests(json.data || [])
     setLoading(false)
   }
 
-  useEffect(() => { fetchRequests() }, [statusFilter])
+  useEffect(() => {
+    let ignore = false
+
+    fetch(`/api/requests?status=${statusFilter}`)
+      .then(res => res.json())
+      .then(json => {
+        if (ignore) return
+        setRequests(json.data || [])
+        setLoading(false)
+      })
+      .catch(() => {
+        if (ignore) return
+        setRequests([])
+        setLoading(false)
+      })
+
+    return () => { ignore = true }
+  }, [statusFilter])
+
+  const totalPages = Math.max(1, Math.ceil(requests.length / REQUESTS_PER_PAGE))
+  const visiblePage = Math.min(currentPage, totalPages)
+  const startIndex = (visiblePage - 1) * REQUESTS_PER_PAGE
+  const paginatedRequests = requests.slice(startIndex, startIndex + REQUESTS_PER_PAGE)
 
   const handleAction = (
     request: Request,
@@ -256,7 +351,7 @@ export default function AdminRequestsPage() {
         body: JSON.stringify({
           action: confirm.action,
           final_value: confirm.finalValue,
-          reviewed_by: TEMP_ADMIN_ID,
+          reject_reason: confirm.action === 'rejected' ? confirm.finalValue : null,
         }),
       })
       if (!res.ok) {
@@ -265,6 +360,7 @@ export default function AdminRequestsPage() {
       } else {
         const actionLabel = confirm.action === 'accepted' ? 'อนุมัติ' : confirm.action === 'edited' ? 'แก้ไขและอนุมัติ' : 'ลบ'
         setToast(`✅ ${actionLabel}แล้ว — ${confirm.request.place_name}`)
+        setLoading(true)
         fetchRequests()
       }
     } catch {
@@ -279,7 +375,7 @@ export default function AdminRequestsPage() {
     <div>
       {/* Toast */}
       {toast && (
-        <div className="fixed top-4 right-4 z-50 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg">
+        <div className="fixed left-3 right-3 top-4 z-50 rounded-lg bg-gray-900 px-4 py-2.5 text-sm text-white shadow-lg sm:left-auto sm:right-4">
           {toast}
         </div>
       )}
@@ -293,17 +389,21 @@ export default function AdminRequestsPage() {
       />
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-800">📨 Admin — Contact Requests</h1>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold text-gray-800 sm:text-2xl">📨 Admin — Contact Requests</h1>
         <span className="text-sm text-gray-400">{requests.length} รายการ</span>
       </div>
 
       {/* Status Tabs */}
-      <div className="flex gap-2 mb-5">
+      <div className="mb-5 flex flex-wrap gap-2">
         {(['pending', 'approved', 'rejected'] as const).map(s => (
           <button
             key={s}
-            onClick={() => setStatusFilter(s)}
+            onClick={() => {
+              setLoading(true)
+              setStatusFilter(s)
+              setCurrentPage(1)
+            }}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${statusFilter === s
               ? s === 'pending' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
                 : s === 'approved' ? 'bg-blue-100 text-blue-800 border border-blue-300'
@@ -315,8 +415,11 @@ export default function AdminRequestsPage() {
           </button>
         ))}
         <button
-          onClick={fetchRequests}
-          className="ml-auto px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50"
+          onClick={() => {
+            setLoading(true)
+            fetchRequests()
+          }}
+          className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 sm:ml-auto sm:w-auto"
         >
           🔄 Refresh
         </button>
@@ -328,16 +431,54 @@ export default function AdminRequestsPage() {
       ) : requests.length === 0 ? (
         <div className="text-center py-20 text-gray-300 text-sm">ไม่มี request ในสถานะนี้</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {requests.map(r => (
-            <RequestCard
-              key={r.id}
-              request={r}
-              onAction={handleAction}
-              readonly={statusFilter !== 'pending'}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {paginatedRequests.map(r => (
+              <RequestCard
+                key={r.id}
+                request={r}
+                onAction={handleAction}
+                readonly={statusFilter !== 'pending'}
+              />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
+              <p className="text-xs text-gray-400">
+                แสดง {startIndex + 1}-{Math.min(startIndex + REQUESTS_PER_PAGE, requests.length)} จาก {requests.length} รายการ
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, visiblePage - 1))}
+                  disabled={visiblePage === 1}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Prev
+                </button>
+                {Array.from({ length: totalPages }, (_, index) => index + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`h-8 min-w-8 rounded-lg border px-2 text-sm font-medium transition-colors ${visiblePage === page
+                      ? 'border-blue-300 bg-blue-100 text-blue-800'
+                      : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                      }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage(Math.min(totalPages, visiblePage + 1))}
+                  disabled={visiblePage === totalPages}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

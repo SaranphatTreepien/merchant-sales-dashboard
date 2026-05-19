@@ -49,7 +49,20 @@ function formatDate(iso: string | null) {
         timeZone: 'Asia/Bangkok',
     })
 }
-
+function Section({ id, title, open, onToggle, children }: {
+    id: string; title: string; open: boolean
+    onToggle: (id: string) => void; children: React.ReactNode
+}) {
+    return (
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10">
+            <button onClick={() => onToggle(id)} className="flex w-full items-center justify-between px-3 py-2.5">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-300">{title}</p>
+                <span className={`text-lg text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>⌄</span>
+            </button>
+            {open && <div className="px-3 pb-3">{children}</div>}
+        </div>
+    )
+}
 export function ExportModal({ cities, serviceGroups, onClose }: {
     cities: string[]
     serviceGroups: ServiceGroup[]
@@ -59,6 +72,17 @@ export function ExportModal({ cities, serviceGroups, onClose }: {
     const [selCities, setSelCities] = useState<Set<string>>(new Set())
     const [selServiceTypes, setSelServiceTypes] = useState<Set<string>>(new Set())
     const [hasBooking, setHasBooking] = useState<'yes' | 'no' | ''>('')
+    const [noted, setNoted] = useState<'yes' | 'no' | ''>('') // ← เพิ่ม
+    const [open, setOpen] = useState<Record<string, boolean>>({
+        city: true,
+        serviceType: true,
+        booking: true,
+        noted: true,
+        columns: true,
+    })
+    const toggleOpen = (key: string) =>
+        setOpen(prev => ({ ...prev, [key]: !prev[key] }))
+
     const [selectedCols, setSelectedCols] = useState<Set<string>>(
         new Set(ALL_COLUMNS.map(c => c.key))
     )
@@ -86,6 +110,7 @@ export function ExportModal({ cities, serviceGroups, onClose }: {
             const params = new URLSearchParams()
             params.set('export', '1')
             if (hasBooking) params.set('hasBooking', hasBooking)
+            if (noted) params.set('noted', noted) // ← เพิ่ม
 
             // multi city/serviceType — ส่งหลายค่าได้
             selCities.forEach(c => params.append('city', c))
@@ -149,118 +174,126 @@ export function ExportModal({ cities, serviceGroups, onClose }: {
     const groups = ['ข้อมูลหลัก', 'Contact']
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-xl shadow-xl w-[560px] max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
+            <div className="flex max-h-[92vh] w-full flex-col rounded-t-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-white/10 dark:bg-slate-900 sm:max-h-[90vh] sm:w-[560px] sm:rounded-2xl">
 
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-                    <h2 className="text-sm font-semibold text-gray-800">⬇️ Export CSV</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+                <div className="border-b border-slate-100 px-4 py-4 dark:border-white/10 sm:px-5">
+                    <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200 dark:bg-white/15 sm:hidden" />
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-base font-bold text-slate-900 dark:text-white">Export CSV</h2>
+                            <p className="mt-0.5 text-xs text-slate-400">เลือกข้อมูลและ columns ที่ต้องการดาวน์โหลด</p>
+                        </div>
+                        <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10">✕</button>
+                    </div>
                 </div>
-
-                <div className="overflow-y-auto px-5 py-4 space-y-5">
+                {/* ปุ่ม mobile only */}
+                <div className="flex flex-col gap-2 px-4 pt-4 sm:hidden">
+                    <button
+                        onClick={handleDownload}
+                        disabled={downloading || selectedCols.size === 0}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#40BEB6] px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-[#40BEB6]/25 hover:bg-[#35a8a1] disabled:opacity-40"
+                    >
+                        {downloading ? (<><svg className="animate-spin h-3 w-3 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>กำลัง Export...</>) : '⬇️ Download CSV'}
+                    </button>
+                    <button onClick={onClose} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300">Cancel</button>
+                </div>
+                <div className="space-y-5 overflow-y-auto px-4 py-4 pb-13 sm:px-5">
 
                     {/* City multi-select */}
-                    <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">📍 จังหวัด</p>
-                            <div className="flex gap-2">
-                                <button onClick={() => setSelCities(new Set(cities))} className="text-xs text-blue-500 hover:text-blue-700">ทั้งหมด</button>
-                                <span className="text-gray-300">|</span>
-                                <button onClick={() => setSelCities(new Set())} className="text-xs text-gray-400 hover:text-gray-600">ล้าง</button>
-                            </div>
+                    <Section id="city" title="จังหวัด" open={open.city} onToggle={toggleOpen}>
+                        <div className="flex justify-end gap-2 mb-1">
+                            <button onClick={() => setSelCities(new Set(cities))} className="text-xs font-semibold text-[#40BEB6] hover:text-[#2f9b95]">ทั้งหมด</button>
+                            <span className="text-slate-300">|</span>
+                            <button onClick={() => setSelCities(new Set())} className="text-xs font-semibold text-slate-400 hover:text-slate-600">ล้าง</button>
                         </div>
-                        <div className="border border-gray-200 rounded-lg p-2 max-h-36 overflow-y-auto grid grid-cols-3 gap-1">
+                        <div className="grid max-h-40 grid-cols-1 gap-1 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/60 p-2 dark:border-white/10 dark:bg-white/5 sm:grid-cols-3">
                             {cities.map(c => (
-                                <label key={c} className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer hover:bg-gray-50 rounded px-1.5 py-1">
+                                <label key={c} className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-white/10">
                                     <input type="checkbox" checked={selCities.has(c)}
                                         onChange={() => toggleSet(selCities, setSelCities, c)}
-                                        className="rounded border-gray-300 text-blue-600" />
+                                        className="rounded border-slate-300 text-[#40BEB6]" />
                                     {c}
                                 </label>
                             ))}
                         </div>
-                        {selCities.size > 0 && (
-                            <p className="text-xs text-blue-500 mt-1">เลือก {selCities.size} จังหวัด</p>
-                        )}
-                    </div>
+                        {selCities.size > 0 && <p className="text-xs text-blue-500 mt-1">เลือก {selCities.size} จังหวัด</p>}
+                    </Section>
 
                     {/* Service Type multi-select */}
-                    <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">🏷️ Service Type</p>
-                            <div className="flex gap-2">
-                                <button onClick={() => setSelServiceTypes(new Set(serviceGroups.map(g => g.value)))} className="text-xs text-blue-500 hover:text-blue-700">ทั้งหมด</button>
-                                <span className="text-gray-300">|</span>
-                                <button onClick={() => setSelServiceTypes(new Set())} className="text-xs text-gray-400 hover:text-gray-600">ล้าง</button>
-                            </div>
+                    <Section id="serviceType" title="Service Type" open={open.serviceType} onToggle={toggleOpen}>
+                        <div className="flex justify-end gap-2 mb-1">
+                            <button onClick={() => setSelServiceTypes(new Set(serviceGroups.map(g => g.value)))} className="text-xs font-semibold text-[#40BEB6] hover:text-[#2f9b95]">ทั้งหมด</button>
+                            <span className="text-slate-300">|</span>
+                            <button onClick={() => setSelServiceTypes(new Set())} className="text-xs font-semibold text-slate-400 hover:text-slate-600">ล้าง</button>
                         </div>
-                        <div className="border border-gray-200 rounded-lg p-2 grid grid-cols-2 gap-1">
+                        <div className="grid grid-cols-1 gap-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-2 dark:border-white/10 dark:bg-white/5 sm:grid-cols-2">
                             {serviceGroups.map(g => (
-                                <label key={g.value} className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer hover:bg-gray-50 rounded px-1.5 py-1">
+                                <label key={g.value} className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-white/10">
                                     <input type="checkbox" checked={selServiceTypes.has(g.value)}
                                         onChange={() => toggleSet(selServiceTypes, setSelServiceTypes, g.value)}
-                                        className="rounded border-gray-300 text-blue-600" />
+                                        className="rounded border-slate-300 text-[#40BEB6]" />
                                     {g.label}
                                 </label>
                             ))}
                         </div>
-                    </div>
+                    </Section>
 
                     {/* Booking */}
-                    <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">📅 Booking</p>
-                        <div className="flex gap-3">
+                    <Section id="booking" title="Booking" open={open.booking} onToggle={toggleOpen}>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
                             {([['', 'ทั้งหมด'], ['yes', '✅ มี Booking'], ['no', '❌ ไม่มี']] as const).map(([val, lbl]) => (
-                                <label key={val} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
-                                    <input type="radio" checked={hasBooking === val}
-                                        onChange={() => setHasBooking(val)}
-                                        className="text-blue-600" />
+                                <label key={val} className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 dark:border-white/10 dark:text-slate-200">
+                                    <input type="radio" checked={hasBooking === val} onChange={() => setHasBooking(val)} className="text-[#40BEB6]" />
                                     {lbl}
                                 </label>
                             ))}
                         </div>
-                    </div>
-
+                    </Section>
+                    {/* Noted */}
+                    <Section id="noted" title="Noted" open={open.noted} onToggle={toggleOpen}>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                            {([['', 'ทั้งหมด'], ['yes', '✅ มี Note'], ['no', '❌ ไม่มี']] as const).map(([val, lbl]) => (
+                                <label key={val} className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 dark:border-white/10 dark:text-slate-200">
+                                    <input type="radio" checked={noted === val} onChange={() => setNoted(val)} className="text-[#40BEB6]" />
+                                    {lbl}
+                                </label>
+                            ))}
+                        </div>
+                    </Section>
                     {/* Columns */}
-                    <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">เลือก Column</p>
-                            <div className="flex gap-2">
-                                <button onClick={() => setSelectedCols(new Set(ALL_COLUMNS.map(c => c.key)))} className="text-xs text-blue-500 hover:text-blue-700">Select All</button>
-                                <span className="text-gray-300">|</span>
-                                <button onClick={() => setSelectedCols(new Set())} className="text-xs text-gray-400 hover:text-gray-600">Deselect All</button>
-                            </div>
+                    {/* Columns */}
+                    <Section id="columns" title="เลือก Column" open={open.columns} onToggle={toggleOpen}>
+                        <div className="flex justify-end gap-2 mb-1">
+                            <button onClick={() => setSelectedCols(new Set(ALL_COLUMNS.map(c => c.key)))} className="text-xs font-semibold text-[#40BEB6] hover:text-[#2f9b95]">Select All</button>
+                            <span className="text-slate-300">|</span>
+                            <button onClick={() => setSelectedCols(new Set())} className="text-xs font-semibold text-slate-400 hover:text-slate-600">Deselect All</button>
                         </div>
                         {groups.map(grp => (
                             <div key={grp} className="mb-3">
-                                <p className="text-xs text-gray-400 font-medium mb-1">{grp}</p>
-                                <div className="grid grid-cols-3 gap-1">
+                                <p className="mb-1 text-xs font-semibold text-slate-400">{grp}</p>
+                                <div className="grid grid-cols-1 gap-1 rounded-2xl border border-slate-200 bg-slate-50/60 p-2 dark:border-white/10 dark:bg-white/5 sm:grid-cols-3">
                                     {ALL_COLUMNS.filter(c => c.group === grp).map(c => (
-                                        <label key={c.key} className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer hover:bg-gray-50 rounded px-1.5 py-1">
+                                        <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-white/10">
                                             <input type="checkbox" checked={selectedCols.has(c.key)}
-                                                onChange={() => {
-                                                    const next = new Set(selectedCols)
-                                                    next.has(c.key) ? next.delete(c.key) : next.add(c.key)
-                                                    setSelectedCols(next)
-                                                }}
-                                                className="rounded border-gray-300 text-blue-600" />
+                                                onChange={() => { const next = new Set(selectedCols); next.has(c.key) ? next.delete(c.key) : next.add(c.key); setSelectedCols(next) }}
+                                                className="rounded border-slate-300 text-[#40BEB6]" />
                                             {c.label}
                                         </label>
                                     ))}
                                 </div>
                             </div>
                         ))}
-                    </div>
+                    </Section>
                 </div>
 
                 {/* Footer */}
-                <div className="flex gap-2 justify-end px-5 py-4 border-t border-gray-200">
-                    <button onClick={onClose} className="px-4 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50">Cancel</button>
+                <div className="hidden sm:flex gap-2 border-t border-slate-100 bg-white/90 px-4 py-4 dark:border-white/10 dark:bg-slate-900/90 sm:flex-row sm:justify-end sm:px-5">                    <button onClick={onClose} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10 sm:py-2">Cancel</button>
                     <button
                         onClick={handleDownload}
                         disabled={downloading || selectedCols.size === 0}
-                        className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 disabled:opacity-40 min-w-[140px] flex items-center justify-center gap-2"
+                        className="flex min-w-[140px] items-center justify-center gap-2 rounded-xl bg-[#40BEB6] px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-[#40BEB6]/25 hover:bg-[#35a8a1] disabled:opacity-40 sm:py-2"
                     >
                         {downloading ? (
                             <>

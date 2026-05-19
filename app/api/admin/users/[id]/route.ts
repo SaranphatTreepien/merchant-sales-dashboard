@@ -4,7 +4,9 @@ import { query } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 
 // PATCH /api/admin/users/[id]  body: { name?, role?, new_password? }
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+
   try {
     const user = await getCurrentUser()
     if (!user || user.role !== 'admin') {
@@ -12,7 +14,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     const { name, role, new_password } = await req.json()
-    const { id } = params
 
     if (role && !['admin', 'sale'].includes(role)) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
@@ -48,7 +49,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 // DELETE /api/admin/users/[id]
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+
   try {
     const user = await getCurrentUser()
     if (!user || user.role !== 'admin') {
@@ -56,11 +59,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     }
 
     // ป้องกันลบตัวเอง
-    if (params.id === user.id) {
+    if (id === user.id) {
       return NextResponse.json({ error: 'ไม่สามารถลบตัวเองได้' }, { status: 400 })
     }
 
-    await query(`DELETE FROM users WHERE id = $1`, [params.id])
+    await query(`DELETE FROM users WHERE id = $1`, [id])
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error(err)

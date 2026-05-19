@@ -17,12 +17,14 @@ export async function GET(req: NextRequest) {
   const hasFb = searchParams.get("hasFb") === "1";
   const hasIg = searchParams.get("hasIg") === "1";
   const hasEmail = searchParams.get("hasEmail") === "1";
+  const hasWhatsapp = searchParams.get("hasWhatsapp") === "1";
+  const hasTelegram = searchParams.get("hasTelegram") === "1";
   const hasBooking = searchParams.get("hasBooking");
   const noted = searchParams.get("noted");
 
   // Pagination (ไม่ใช้ตอน export)
   const page = parseInt(searchParams.get("page") || "1");
-  const limit = 50;
+  const limit = 20;
   const offset = (page - 1) * limit;
 
   try {
@@ -322,6 +324,18 @@ export async function GET(req: NextRequest) {
         WHERE pe2.place_id = p.place_id
       )`);
     }
+    if (hasWhatsapp) {
+      conditions.push(`EXISTS (
+    SELECT 1 FROM place_whatsapps pw2
+    WHERE pw2.place_id = p.place_id
+  )`);
+    }
+    if (hasTelegram) {
+      conditions.push(`EXISTS (
+    SELECT 1 FROM place_telegrams pt2
+    WHERE pt2.place_id = p.place_id
+  )`);
+    }
     if (hasBooking === "yes") conditions.push(`p.has_booking = TRUE`);
     if (hasBooking === "no")
       conditions.push(`(p.has_booking = FALSE OR p.has_booking IS NULL)`);
@@ -351,15 +365,16 @@ export async function GET(req: NextRequest) {
         p.has_booking,
 
         -- Primary phone
-        MAX(CASE WHEN ph.is_primary = TRUE THEN ph.number END) AS phone,
+        MAX(ph.number) AS phone,
         -- Secondary phone (non-primary)
         MAX(CASE WHEN (ph.is_primary IS NULL OR ph.is_primary = FALSE) THEN ph.number END) AS phone2,
 
-        MAX(pl.line_id)   AS line_id,
-        MAX(pe.address)   AS email,
-        MAX(pfb.url)      AS facebook_url,
-        MAX(pig.handle)   AS instagram_handle,
-
+        MAX(pl.line_id)        AS line_id,
+        MAX(pe.address)        AS email,
+        MAX(pfb.url)           AS facebook_url,
+        MAX(pig.handle)        AS instagram_handle,
+        MAX(pw.number)         AS whatsapp,
+        MAX(ptg.telegram_url)  AS telegram_url,
         -- Last note (subquery)
         (SELECT n.note FROM place_notes n
           WHERE n.place_id = p.place_id
@@ -385,6 +400,8 @@ export async function GET(req: NextRequest) {
       LEFT JOIN place_emails     pe  ON pe.place_id  = p.place_id
       LEFT JOIN place_facebooks  pfb ON pfb.place_id = p.place_id
       LEFT JOIN place_instagrams pig ON pig.place_id = p.place_id
+      LEFT JOIN place_whatsapps  pw  ON pw.place_id  = p.place_id
+      LEFT JOIN place_telegrams  ptg ON ptg.place_id = p.place_id
       WHERE ${where}
       GROUP BY
         p.place_id, p.name, p.city, p.service_type,

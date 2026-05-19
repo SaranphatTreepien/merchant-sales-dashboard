@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type Note = {
@@ -48,19 +48,19 @@ function getInitials(name: string | null) {
         .slice(0, 2)
 }
 
-// สีต่าง ๆ ต่อ sale (hash จากชื่อ)
+// สีต่าง ๆ ต่อ sale (hash จากชื่อ) - ปรับโทนสีให้สดใสทั้งโหมดมืดและสว่าง
 const AVATAR_COLORS = [
-    'bg-blue-500',
-    'bg-emerald-500',
-    'bg-violet-500',
-    'bg-amber-500',
-    'bg-rose-500',
-    'bg-cyan-500',
-    'bg-pink-500',
-    'bg-indigo-500',
+    'bg-blue-500 dark:bg-blue-600',
+    'bg-emerald-500 dark:bg-emerald-600',
+    'bg-violet-500 dark:bg-violet-600',
+    'bg-amber-500 dark:bg-amber-600',
+    'bg-rose-500 dark:bg-rose-600',
+    'bg-cyan-500 dark:bg-cyan-600',
+    'bg-pink-500 dark:bg-pink-600',
+    'bg-indigo-500 dark:bg-indigo-600',
 ]
 function avatarColor(name: string | null) {
-    if (!name) return 'bg-gray-400'
+    if (!name) return 'bg-gray-400 dark:bg-slate-600'
     let hash = 0
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
     return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
@@ -119,7 +119,6 @@ export default function NotesAllPage() {
         const json = await res.json()
         const data: Note[] = json.data || []
 
-        // sort แต่ละ group — note ที่แก้ล่าสุดขึ้นก่อน (client-side)
         setNotes(data)
         setPagination(json.pagination || null)
         setLoading(false)
@@ -146,13 +145,16 @@ export default function NotesAllPage() {
 
     const totalPages = pagination?.total_pages ?? 1
 
+    // คลาสกลางสำหรับ Input เพื่อความคลีนและรองรับ Dark Mode
+    const inputClassName = "w-full rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-gray-950 dark:text-slate-50 shadow-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:focus:ring-blue-500/20"
+
     return (
-        <div>
+        <div className="min-h-screen p-1 text-gray-900 dark:text-slate-100 transition-colors duration-200">
             {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
+            <div className="mb-8 flex items-center gap-4">
                 <button
                     onClick={() => router.back()}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-sm transition-all hover:bg-gray-50 hover:text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                     aria-label="back"
                 >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -160,162 +162,180 @@ export default function NotesAllPage() {
                     </svg>
                 </button>
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">🗂️ Note History — ทุก Sale</h1>
-                    <p className="text-sm text-gray-400 mt-0.5">อ่านอย่างเดียว · แสดงทุก note ของทุกคน</p>
+                    <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
+                        🗂️ Note History 
+                    </h1>
+                    <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
+                        โหมดอ่านอย่างเดียว · แสดงบันทึกข้อมูลทั้งหมดของทีมงาน
+                    </p>
                 </div>
             </div>
 
             {/* Filter Bar */}
             <form
                 onSubmit={handleSearch}
-                className="flex gap-2 mb-5 flex-wrap items-end bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm"
+                className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800"
             >
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-gray-500">จากวันที่</label>
-                    <input
-                        type="date"
-                        className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white text-gray-900"
-                        value={dateFrom}
-                        onChange={(e) => setDateFrom(e.target.value)}
-                    />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-gray-500">ถึงวันที่</label>
-                    <input
-                        type="date"
-                        className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white text-gray-900"
-                        value={dateTo}
-                        onChange={(e) => setDateTo(e.target.value)}
-                    />
-                </div>
-
-                {currentUser?.role === 'admin' && (
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500">Sale</label>
-                        <select
-                            className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white text-gray-900"
-                            value={saleId}
-                            onChange={(e) => { setSaleId(e.target.value); setPage(1); setTimeout(() => fetchNotes(1), 0) }}
-                        >
-                            <option value="">ทุก Sale</option>
-                            {sales.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                    {s.name}
-                                </option>
-                            ))}
-                        </select>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-wrap xl:items-end">
+                    
+                    <div className="flex flex-col gap-1.5 xl:w-44">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">จากวันที่</label>
+                        <input
+                            type="date"
+                            className={inputClassName}
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                        />
                     </div>
-                )}
 
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-gray-500">ค้นหา</label>
-                    <input
-                        className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white text-gray-900 placeholder-gray-400 w-64"
-                        placeholder="ชื่อร้าน / จังหวัด / place_id..."
-                        value={search}
-                        onChange={(e) => {
-                            const val = e.target.value
-                            setSearch(val)
-                            setPage(1)
-                            fetchNotes(1, { search: val })
-                        }}
-                    />
+                    <div className="flex flex-col gap-1.5 xl:w-44">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">ถึงวันที่</label>
+                        <input
+                            type="date"
+                            className={inputClassName}
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                        />
+                    </div>
+
+                    {currentUser?.role === 'admin' && (
+                        <div className="flex flex-col gap-1.5 xl:w-52">
+                            <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">พนักงานขาย (Sale)</label>
+                            <select
+                                className={inputClassName}
+                                value={saleId}
+                                onChange={(e) => { setSaleId(e.target.value); setPage(1); setTimeout(() => fetchNotes(1), 0) }}
+                            >
+                                <option value="">ทุก Sale</option>
+                                {sales.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-1 xl:flex-1 xl:min-w-[260px]">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">ค้นหา</label>
+                        <input
+                            className={inputClassName}
+                            placeholder="ชื่อร้าน / จังหวัด / ID..."
+                            value={search}
+                            onChange={(e) => {
+                                const val = e.target.value
+                                setSearch(val)
+                                setPage(1)
+                                fetchNotes(1, { search: val })
+                            }}
+                        />
+                    </div>
+
+                    {/* Buttons Action */}
+                    <div className="flex gap-2 sm:col-span-2 lg:col-span-4 xl:col-span-1 xl:ml-auto pt-2 xl:pt-0">
+                        <button
+                            type="submit"
+                            className="flex-1 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 focus:ring-4 focus:ring-blue-500/20 active:scale-[0.98] xl:flex-none"
+                        >
+                            Search
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleReset}
+                            className="flex-1 rounded-lg border border-gray-200 bg-white px-5 py-2 text-sm font-semibold text-gray-600 shadow-sm transition-all hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 xl:flex-none"
+                        >
+                            Reset
+                        </button>
+                    </div>
                 </div>
-
-                <button
-                    type="submit"
-                    className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 self-end transition-colors"
-                >
-                    Search
-                </button>
-                <button
-                    type="button"
-                    onClick={handleReset}
-                    className="px-4 py-1.5 bg-white border border-gray-300 text-gray-600 rounded text-sm hover:bg-gray-50 self-end transition-colors"
-                >
-                    Reset
-                </button>
 
                 {pagination && (
-                    <span className="text-sm text-gray-400 self-end ml-auto">
-                        {pagination.total.toLocaleString()} notes
-                    </span>
+                    <div className="mt-4 border-t border-gray-100 pt-3 text-right text-xs text-gray-400 dark:border-slate-700 dark:text-slate-500">
+                        พบทั้งหมด <span className="font-bold text-gray-700 dark:text-slate-300">{pagination.total.toLocaleString()}</span> บันทึก
+                    </div>
                 )}
             </form>
 
-            {/* Content */}
+            {/* Content Section */}
             {loading ? (
-                <div className="flex items-center justify-center py-20 text-gray-400">
-                    <svg className="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+                <div className="flex flex-col items-center justify-center py-32 text-gray-400 dark:text-slate-500">
+                    <svg className="animate-spin h-8 w-8 text-blue-600 mb-4" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
-                    Loading...
+                    <span className="text-sm font-medium">กำลังดึงข้อมูล...</span>
                 </div>
             ) : notes.length === 0 ? (
-                <div className="text-center py-20 text-gray-400">ไม่มี note ที่ตรงกับ filter</div>
+                <div className="rounded-xl border border-dashed border-gray-300 dark:border-slate-700 py-24 text-center text-gray-400 dark:text-slate-500">
+                    <span className="text-3xl block mb-2">🔍</span>
+                    ไม่พบข้อมูล Note ที่ตรงกับเงื่อนไขการค้นหา
+                </div>
             ) : (
                 <div className="space-y-6">
                     {Object.values(grouped).map((group) => (
                         <div
                             key={group.place_id}
-                            className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden"
+                            className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-slate-700/80 dark:bg-slate-800"
                         >
                             {/* Place Header */}
-                            <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-gray-400 text-sm">🏪</span>
+                            <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/70 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700 dark:bg-slate-800/50">
+                                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                    <span className="text-base">🏪</span>
                                     <button
                                         onClick={() => router.push(`/dashboard/${group.place_id}`)}
-                                        className="font-semibold text-blue-700 hover:underline text-sm"
+                                        className="break-words text-left text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
                                     >
                                         {group.place_name || group.place_id}
                                     </button>
-                                    <span className="text-xs text-gray-400 font-mono">{group.place_id}</span>
+                                    <span className="rounded bg-gray-200/60 px-1.5 py-0.5 font-mono text-[10px] text-gray-500 dark:bg-slate-700 dark:text-slate-400">
+                                        {group.place_id}
+                                    </span>
                                 </div>
-                                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                                    {group.notes.length} notes
+                                <span className="self-start rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 sm:self-center">
+                                    {group.notes.length} {group.notes.length > 1 ? 'notes' : 'note'}
                                 </span>
                             </div>
 
-                            {/* Timeline */}
-                            <div className="divide-y divide-gray-100">
+                            {/* Timeline List */}
+                            <div className="divide-y divide-gray-100 dark:divide-slate-700/60">
                                 {(() => {
-                                    const latestUpdatedAt = group.notes
-                                        .filter(n => n.updated_at !== n.created_at)
-                                        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]?.updated_at
+                                    const latestUpdatedAt = group.notes.length > 1
+                                        ? [...group.notes].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]?.updated_at
+                                        : null
 
                                     return group.notes.map((n, idx) => {
                                         const isLatestEdited = !!latestUpdatedAt && n.updated_at === latestUpdatedAt
                                         return (
-                                            <div key={n.id} className="flex gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
-                                                {/* Timeline line + dot */}
-                                                <div className="flex flex-col items-center pt-1 shrink-0">
-                                                    <div
-                                                        className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(n.sale_name)}`}
-                                                    >
+                                            <div key={n.id} className="group flex gap-4 px-5 py-4.5 hover:bg-gray-50/50 dark:hover:bg-slate-700/20 transition-colors">
+                                                
+                                                {/* Line & Dot Indicator */}
+                                                <div className="flex flex-col items-center shrink-0 pt-0.5">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm ring-4 ring-white dark:ring-slate-800 ${avatarColor(n.sale_name)}`}>
                                                         {getInitials(n.sale_name)}
                                                     </div>
                                                     {idx < group.notes.length - 1 && (
-                                                        <div className="w-px flex-1 bg-gray-200 mt-1 min-h-[16px]" />
+                                                        <div className="w-0.5 flex-1 bg-gray-200 dark:bg-slate-700 mt-2 min-h-[24px]" />
                                                     )}
                                                 </div>
 
-                                                {/* Note content */}
-                                                <div className="flex-1 min-w-0 pb-1">
-                                                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                        <span className="text-sm font-medium text-gray-700">
-                                                            {n.sale_name || '—'}
+                                                {/* Content Wrapper */}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                                                        <span className="text-sm font-semibold text-gray-800 dark:text-slate-200">
+                                                            {n.sale_name || 'ไม่ระบุชื่อ'}
                                                         </span>
-                                                        <span className="text-xs text-gray-400">{formatDate(n.created_at)}</span>
+                                                        <span className="text-xs text-gray-400 dark:text-slate-500">
+                                                            • {formatDate(n.created_at)}
+                                                        </span>
+                                                        
                                                         {isLatestEdited && (
-                                                            <span className="text-xs text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">
-                                                                แก้ล่าสุด {formatDate(n.updated_at)}
+                                                            <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200/40 dark:border-amber-500/20">
+                                                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                                                แก้ไขล่าสุด: {formatDate(n.updated_at)}
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <p className="text-sm text-gray-800 whitespace-pre-wrap break-words leading-relaxed">
+                                                    <p className="text-sm text-gray-700 dark:text-slate-300 whitespace-pre-wrap break-words leading-relaxed">
                                                         {n.note}
                                                     </p>
                                                 </div>
@@ -331,23 +351,23 @@ export default function NotesAllPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-                <div className="flex gap-2 mt-6 items-center">
+                <div className="flex items-center justify-center gap-3 mt-8 border-t border-gray-100 pt-6 dark:border-slate-800">
                     <button
-                        className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-40 bg-white hover:bg-gray-50 transition-colors"
+                        className="flex h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium shadow-sm transition-all hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 dark:disabled:hover:bg-slate-900"
                         onClick={() => setPage((p) => p - 1)}
                         disabled={page === 1 || loading}
                     >
-                        ← Prev
+                        ← ก่อนหน้า
                     </button>
-                    <span className="text-sm text-gray-600">
-                        Page {page} / {totalPages}
+                    <span className="text-sm font-medium text-gray-500 dark:text-slate-400">
+                        หน้า {page} จาก {totalPages}
                     </span>
                     <button
-                        className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-40 bg-white hover:bg-gray-50 transition-colors"
+                        className="flex h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium shadow-sm transition-all hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 dark:disabled:hover:bg-slate-900"
                         onClick={() => setPage((p) => p + 1)}
                         disabled={page >= totalPages || loading}
                     >
-                        Next →
+                        ถัดไป →
                     </button>
                 </div>
             )}

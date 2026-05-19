@@ -22,20 +22,37 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'DB error' }, { status: 500 })
   }
 }
-
 export async function POST(req: NextRequest) {
   try {
-    // ─── Auth ────────────────────────────────────────────────────────────────
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
     const { place_id, field_type, old_value, new_value, reason } = body
 
-    // ลบ requested_by ออกจาก body แล้ว — ใช้จาก cookie แทน
     if (!place_id || !field_type || new_value === undefined || new_value === null) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+
+    // ── Duplicate guard ──────────────────────────────────────────────────────
+    if (field_type !== 'phone_new') {
+      const { rows: existing } = await pool.query(
+        `SELECT id FROM contact_edit_requests
+         WHERE place_id = $1
+           AND field_type = $2
+           AND old_value = $3
+           AND status = 'pending'
+         LIMIT 1`,
+        [place_id, field_type, old_value ?? null],
+      )
+      if (existing.length > 0) {
+        return NextResponse.json(
+          { error: 'มีคำขอที่รอดำเนินการอยู่แล้ว กรุณารอ Admin อนุมัติก่อน' },
+          { status: 409 },
+        )
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     const { rows } = await pool.query(
       `INSERT INTO contact_edit_requests

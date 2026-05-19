@@ -80,19 +80,19 @@ export default function ProfilePage() {
   if (!user) return <div className="text-gray-400 py-10 text-center">Loading...</div>
 
   return (
-    <div className="max-w-md mx-auto mt-8">
+    <div className="mx-auto mt-4 max-w-md sm:mt-8">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-600">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 className="text-2xl font-bold text-gray-800">👤 โปรไฟล์</h1>
+        <h1 className="text-xl font-bold text-gray-800 sm:text-2xl">👤 โปรไฟล์</h1>
       </div>
 
       {/* Info */}
-      <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 mb-4 text-sm text-gray-500 flex gap-4">
-        <span>📧 {user.email}</span>
+      <div className="mb-4 flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500 sm:flex-row sm:gap-4">
+        <span className="break-all">📧 {user.email}</span>
         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
           user.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
         }`}>
@@ -103,9 +103,9 @@ export default function ProfilePage() {
       {/* แก้ชื่อ */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
         <h2 className="text-sm font-semibold text-gray-700 mb-3">✏️ แก้ไขชื่อ</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
-            className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm"
+            className="flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm"
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="ชื่อ"
@@ -113,7 +113,7 @@ export default function ProfilePage() {
           <button
             onClick={handleSaveName}
             disabled={saving || !name.trim() || name === user.name}
-            className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-40 transition-colors"
+            className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
           >
             บันทึก
           </button>

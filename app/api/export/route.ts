@@ -244,7 +244,7 @@ export async function GET(req: NextRequest) {
   const cities = searchParams.getAll("city");
   const serviceTypes = searchParams.getAll("serviceType");
   const hasBooking = searchParams.get("hasBooking");
-
+  const noted = searchParams.get("noted"); // ← เพิ่ม
   const conditions: string[] = ["1=1"];
   const values: unknown[] = [];
   let i = 1;
@@ -263,7 +263,9 @@ export async function GET(req: NextRequest) {
   if (hasBooking === "yes") conditions.push(`p.has_booking = TRUE`);
   if (hasBooking === "no")
     conditions.push(`(p.has_booking = FALSE OR p.has_booking IS NULL)`);
-
+  if (noted === "yes") conditions.push(`pn.note_count > 0`); // ← เพิ่ม
+  if (noted === "no")
+    conditions.push(`(pn.note_count IS NULL OR pn.note_count = 0)`); // ← เพิ่ม
   const where = conditions.join(" AND ");
 
   try {
@@ -295,6 +297,11 @@ export async function GET(req: NextRequest) {
       LEFT JOIN place_messengers pm  ON pm.place_id = p.place_id
       LEFT JOIN place_whatsapps  pw  ON pw.place_id = p.place_id
       LEFT JOIN place_telegrams  pt  ON pt.place_id = p.place_id
+      LEFT JOIN (                                                   -- ← เพิ่ม
+  SELECT place_id, COUNT(*) AS note_count
+  FROM place_notes
+  GROUP BY place_id
+) pn ON pn.place_id = p.place_id
       WHERE ${where}
       GROUP BY p.place_id, p.name, p.address, p.city, p.country,
         p.google_map_url, p.service_type, p.service_types,

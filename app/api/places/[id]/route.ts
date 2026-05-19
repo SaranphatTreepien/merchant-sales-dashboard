@@ -11,8 +11,15 @@ export async function GET(
     const { rows } = await pool.query(
       `
       SELECT
-    p.*,
-    c.phone, c.phone2,
+  p.place_id,
+  p.name,
+  p.city,
+  p.business_status,
+  p.rating,
+  p.scraped_at,
+  p.website,          -- ✅ เพิ่มตรงนี้
+  p.google_map_url,
+  p.has_booking,
     c.line_oa, c.line_personal, c.line_url,
     c.email, c.facebook_url,
     c.instagram_handle, c.instagram_url,
@@ -21,8 +28,7 @@ export async function GET(
   FROM places p
       LEFT JOIN LATERAL (
         SELECT
-          MAX(CASE WHEN ph.is_primary = TRUE  THEN ph.number END) AS phone,
-          MAX(CASE WHEN ph.is_primary = FALSE THEN ph.number END) AS phone2,
+          
           MAX(CASE WHEN pl.type = 'oa'       THEN pl.line_id END) AS line_oa,
           MAX(CASE WHEN pl.type = 'personal' THEN pl.line_id END) AS line_personal,
           MAX(pl.line_url)      AS line_url,
@@ -65,16 +71,27 @@ export async function GET(
 
     const { rows: requests } = await pool.query(
       `
-      SELECT r.*, u.name AS requested_by_name
-      FROM contact_edit_requests r
-      JOIN users u ON u.id = r.requested_by
-      WHERE r.place_id = $1
-      ORDER BY r.created_at DESC
-    `,
+  SELECT 
+    r.*, 
+    u.name AS requested_by_name,
+    l.reject_reason
+  FROM contact_edit_requests r
+  JOIN users u ON u.id = r.requested_by
+  LEFT JOIN contact_edit_logs l ON l.request_id = r.id
+  WHERE r.place_id = $1
+  ORDER BY r.created_at DESC
+  `,
+      [id],
+    );
+    const { rows: phones } = await pool.query(
+      `SELECT id, number, normalized, label, is_primary, is_manual, added_by, source, created_at
+FROM place_phones
+WHERE place_id = $1 AND deleted_at IS NULL
+ORDER BY is_primary DESC, created_at ASC`,
       [id],
     );
 
-    return NextResponse.json({ place: rows[0], notes, requests });
+    return NextResponse.json({ place: rows[0], notes, requests, phones });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "DB error" }, { status: 500 });
