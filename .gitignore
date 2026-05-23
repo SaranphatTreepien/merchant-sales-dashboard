@@ -42,5 +42,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 # local test scripts
-test_insert_data.py
-delete_test_data.py
+scripts/sampledatascript/

@@ -1,173 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
-const THAI_PROVINCES = [
-  // ไทย (TH)
-  "กรุงเทพมหานคร",
-  "กระบี่",
-  "กาญจนบุรี",
-  "กาฬสินธุ์",
-  "กำแพงเพชร",
-  "ขอนแก่น",
-  "จันทบุรี",
-  "ฉะเชิงเทรา",
-  "ชลบุรี",
-  "ชัยนาท",
-  "ชัยภูมิ",
-  "ชุมพร",
-  "เชียงราย",
-  "เชียงใหม่",
-  "ตรัง",
-  "ตราด",
-  "ตาก",
-  "นครนายก",
-  "นครปฐม",
-  "นครพนม",
-  "นครราชสีมา",
-  "นครศรีธรรมราช",
-  "นครสวรรค์",
-  "นนทบุรี",
-  "นราธิวาส",
-  "น่าน",
-  "บึงกาฬ",
-  "บุรีรัมย์",
-  "ปทุมธานี",
-  "ประจวบคีรีขันธ์",
-  "ปราจีนบุรี",
-  "ปัตตานี",
-  "พระนครศรีอยุธยา",
-  "พะเยา",
-  "พังงา",
-  "พัทลุง",
-  "พิจิตร",
-  "พิษณุโลก",
-  "เพชรบุรี",
-  "เพชรบูรณ์",
-  "แพร่",
-  "ภูเก็ต",
-  "มหาสารคาม",
-  "มุกดาหาร",
-  "แม่ฮ่องสอน",
-  "ยโสธร",
-  "ยะลา",
-  "ร้อยเอ็ด",
-  "ระนอง",
-  "ระยอง",
-  "ราชบุรี",
-  "ลพบุรี",
-  "ลำปาง",
-  "ลำพูน",
-  "เลย",
-  "ศรีสะเกษ",
-  "สกลนคร",
-  "สงขลา",
-  "สตูล",
-  "สมุทรปราการ",
-  "สมุทรสงคราม",
-  "สมุทรสาคร",
-  "สระแก้ว",
-  "สระบุรี",
-  "สิงห์บุรี",
-  "สุโขทัย",
-  "สุพรรณบุรี",
-  "สุราษฎร์ธานี",
-  "สุรินทร์",
-  "หนองคาย",
-  "หนองบัวลำภู",
-  "อ่างทอง",
-  "อำนาจเจริญ",
-  "อุดรธานี",
-  "อุตรดิตถ์",
-  "อุทัยธานี",
-  "อุบลราชธานี",
-
-  // English (77 Provinces)
-  "Bangkok",
-  "Krabi",
-  "Kanchanaburi",
-  "Kalasin",
-  "Kamphaeng Phet",
-  "Khon Kaen",
-  "Chanthaburi",
-  "Chachoengsao",
-  "Chonburi",
-  "Chai Nat",
-  "Chaiyaphum",
-  "Chumphon",
-  "Chiang Rai",
-  "Chiang Mai",
-  "Trang",
-  "Trat",
-  "Tak",
-  "Nakhon Nayok",
-  "Nakhon Pathom",
-  "Nakhon Phanom",
-  "Nakhon Ratchasima",
-  "Nakhon Si Thammarat",
-  "Nakhon Sawan",
-  "Nonthaburi",
-  "Narathiwat",
-  "Nan",
-  "Bueng Kan",
-  "Buriram",
-  "Pathum Thani",
-  "Prachuap Khiri Khan",
-  "Prachin Buri",
-  "Pattani",
-  "Phra Nakhon Si Ayutthaya",
-  "Phayao",
-  "Phang Nga",
-  "Phatthalung",
-  "Phichit",
-  "Phitsanulok",
-  "Phetchaburi",
-  "Phetchabun",
-  "Phrae",
-  "Phuket",
-  "Maha Sarakham",
-  "Mukdahan",
-  "Mae Hong Son",
-  "Yasothon",
-  "Yala",
-  "Roi Et",
-  "Ranong",
-  "Rayong",
-  "Ratchaburi",
-  "Lopburi",
-  "Lampang",
-  "Lamphun",
-  "Loei",
-  "Sisaket",
-  "Sakon Nakhon",
-  "Songkhla",
-  "Satun",
-  "Samut Prakan",
-  "Samut Songkhram",
-  "Samut Sakhon",
-  "Sa Kaeo",
-  "Saraburi",
-  "Sing Buri",
-  "Sukhothai",
-  "Suphan Buri",
-  "Surat Thani",
-  "Surin",
-  "Nong Khai",
-  "Nong Bua Lamphu",
-  "Ang Thong",
-  "Amnat Charoen",
-  "Udon Thani",
-  "Uttaradit",
-  "Uthai Thani",
-  "Ubon Ratchathani",
-
-  // aliases / commonly found in DB
-  "Pattaya",
-  "Pattaya City",
-  "Muang Pattaya",
-  "Nongprue",
-  "Khlong Nueng",
-  "Ao Salat",
-  "Ban Suan",
-];
+import {
+  REGIONS,
+  COUNTRY_LABELS,
+  getCitiesByCountry,
+  OTHER_CITY,
+  OTHER_CITY_LABEL,
+} from "@/lib/constants/regions";
 const SERVICE_GROUPS = [
   {
     label: "🍽️ Restaurant & Food",
@@ -434,45 +273,87 @@ const SERVICE_GROUPS = [
     ],
   },
 ];
-export async function GET() {
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const country = searchParams.get("country") || "ALL"; // ← เปลี่ยน default เป็น ALL
+
   try {
-    const { rows: serviceTypes } = await pool.query(`
-      SELECT DISTINCT service_type
+    // ── Countries ที่มีใน DB (เฉพาะที่อยู่ใน regions.ts) ─────────────────
+    const { rows: countryRows } = await pool.query(`
+      SELECT country, COUNT(*) as total
       FROM places
-      WHERE service_type IS NOT NULL
-      ORDER BY service_type ASC
+      WHERE country IS NOT NULL
+      GROUP BY country
+      ORDER BY total DESC
     `);
 
-    const { rows: cities } = await pool.query(
-      `
-  SELECT DISTINCT
-    CASE city
-      WHEN 'Pattaya'       THEN 'ชลบุรี'
-      WHEN 'Pattaya City'  THEN 'ชลบุรี'
-      WHEN 'Muang Pattaya' THEN 'ชลบุรี'
-      WHEN 'Nongprue'      THEN 'ชลบุรี'
-      WHEN 'Khlong Nueng'  THEN 'ปทุมธานี'
-      WHEN 'Nonthaburi'    THEN 'นนทบุรี'
-      WHEN 'Samut Prakan'  THEN 'สมุทรปราการ'
-      WHEN 'Ao Salat'      THEN 'ระยอง'
-      WHEN 'Ban Suan'      THEN 'ชลบุรี'
-      ELSE city
-    END AS city
-  FROM places
-  WHERE city = ANY($1)
-  ORDER BY city ASC
-`,
-      [THAI_PROVINCES],
-    );
+    const countryList = countryRows
+      .filter((r) => REGIONS[r.country])
+      .map((r) => ({
+        code: r.country,
+        name: COUNTRY_LABELS[r.country]?.name ?? r.country,
+        flag: COUNTRY_LABELS[r.country]?.flag ?? r.country.toLowerCase(),
+        total: parseInt(r.total),
+      }));
+
+    const allTotal = countryList.reduce((sum, c) => sum + c.total, 0);
+    const countries = [
+      { code: "ALL", name: "All Countries", flag: "un", total: allTotal },
+      ...countryList,
+    ];
+    // ── Cities ของประเทศที่เลือก ──────────────────────────────────────────
+    let cities: string[] = [];
+
+    if (country !== "ALL") {
+      const provincesForCountry = getCitiesByCountry(country);
+
+      const { rows: cityRows } = await pool.query(
+        `
+    SELECT DISTINCT
+      CASE city
+        WHEN 'Pattaya'       THEN 'ชลบุรี'
+        WHEN 'Pattaya City'  THEN 'ชลบุรี'
+        WHEN 'Muang Pattaya' THEN 'ชลบุรี'
+        WHEN 'Nongprue'      THEN 'ชลบุรี'
+        WHEN 'Khlong Nueng'  THEN 'ปทุมธานี'
+        WHEN 'Nonthaburi'    THEN 'นนทบุรี'
+        WHEN 'Samut Prakan'  THEN 'สมุทรปราการ'
+        WHEN 'Ao Salat'      THEN 'ระยอง'
+        WHEN 'Ban Suan'      THEN 'ชลบุรี'
+        ELSE city
+      END AS city
+    FROM places
+    WHERE city = ANY($1) AND country = $2
+    ORDER BY city ASC
+    `,
+        [provincesForCountry, country],
+      );
+
+      const { rows: otherRows } = await pool.query(
+        `
+    SELECT COUNT(*) as total
+    FROM places
+    WHERE country = $1
+      AND (city IS NULL OR city = '' OR city != ALL($2))
+    `,
+        [country, provincesForCountry],
+      );
+
+      const hasOther = parseInt(otherRows[0].total) > 0;
+      cities = [
+        ...cityRows.map((r) => r.city),
+        ...(hasOther ? [OTHER_CITY] : []),
+      ];
+    }
     const { rows: sales } = await pool.query(`
-  SELECT id, name
-  FROM users
-  WHERE role = 'sale'
-  ORDER BY name ASC
-`);
+      SELECT id, name FROM users WHERE role = 'sale' ORDER BY name ASC
+    `);
     return NextResponse.json({
-      serviceGroups: SERVICE_GROUPS, // ← เปลี่ยนจาก serviceTypes
-      cities: cities.map((r) => r.city),
+      countries,
+      serviceGroups: SERVICE_GROUPS,
+      cities,
+      otherLabel: OTHER_CITY_LABEL, // ส่ง label ไปให้ frontend แสดงผล
       sales: sales.map((r) => ({ id: r.id, name: r.name })),
     });
   } catch (err) {

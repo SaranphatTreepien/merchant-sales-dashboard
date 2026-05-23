@@ -4,6 +4,13 @@
 
     ---
 
+ดู DB ผ่าน docker
+C:\Users\Saranphat>docker ps
+CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES
+a6f728c7b959 postgres:17 "docker-entrypoint.s…" 13 days ago Up 9 minutes 0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp merchant_db
+
+C:\Users\Saranphat>
+
     ## 1. Stack
 
     | Layer    | Technology                                      |
@@ -59,175 +66,150 @@
     | `place_payment_info` | transfer_account, transfer_name |
 
     ---
+    -- New Table
+
+deal_cases
+├── id SERIAL PRIMARY KEY
+├── place_id VARCHAR(255) FK → places(place_id)
+├── sale_id UUID FK → users(id)
+├── reference_code VARCHAR(30) NULL ← optional สำหรับ pending
+├── status deal_status (pending | success)
+├── note TEXT NULL
+├── created_at TIMESTAMPTZ
+└── updated_at TIMESTAMPTZ ← auto-update via trigger
+
+-- New Type
+deal_status ENUM ('pending', 'success')
+
+-- Indexes
+idx_deal_cases_place_id
+idx_deal_cases_sale_id
+idx_deal_cases_status
+
+-- Trigger
+trg_deal_cases_updated_at → auto-update updated_at
 
     ## 3. โครงสร้างไฟล์ปัจจุบัน
 
     ```
     sales-dashboard/
-    ├── app/
-    │   ├── page.tsx                        ✅ redirect → /dashboard
-    │   ├── layout.tsx                      ✅ + nav link /admin/contact-history
-    │   ├── login/page.tsx                  ✅
-    │   ├── profile/page.tsx                ✅
-    │   ├── dashboard/
-    │   │   ├── page.tsx                    ✅
-    │   │   └── [id]/page.tsx               ✅ phones array + PhoneRow
-    │   ├── notes/
-    │   │   ├── page.tsx                    ✅
-    │   │   └── all/page.tsx                ✅
-    │   ├── report/page.tsx                 ❌ placeholder (TODO: Recharts)
-    │   └── admin/
-    │       ├── requests/page.tsx           ✅ + fieldLabel phone_new, phone_edit
-    │       ├── users/page.tsx              ✅
-    │       └── contact-history/
-    │           └── page.tsx                ✅ search + date filter + timeline modal
-    ├── api/
-    │   ├── auth/
-    │   │   ├── login/route.ts              ✅
-    │   │   ├── logout/route.ts             ✅
-    │   │   ├── me/route.ts                 ✅
-    │   │   └── profile/route.ts            ✅
-    │   ├── dashboard/route.ts              ✅
-    │   ├── export/route.ts                 ✅
-    │   ├── filters/route.ts                ✅
-    │   ├── notes/
-    │   │   ├── route.ts                    ✅
-    │   │   └── [id]/route.ts               ✅
-    │   ├── places/
-    │   │   ├── [id]/route.ts               ✅ phones array
-    │   │   └── [id]/phones/route.ts        ✅ (deprecated)
-    │   ├── requests/
-    │   │   ├── route.ts                    ✅
-    │   │   └── [id]/route.ts               ✅ phone_new, phone_edit cases
-    │   ├── report-issue/
-    │   │   └── route.ts                    ✅ POST → Telegram Bot
-    │   ├── admin/
-    │   │   └── contact-history/
-    │   │       ├── route.ts                ✅ DISTINCT ON place_id + date filter
-    │   │       └── [placeId]/
-    │   │           └── [contactType]/
-    │   │               └── route.ts        ✅ scraper + manual merge
-    │   └── verifications/route.ts          ✅
-    ├── components/
-    │   ├── LogoutButton.tsx                ✅
-    │   ├── ExportModal.tsx                 ✅
-    │   ├── ThemeToggle.tsx                 ✅
-    │   └── ReportIssueButton.tsx           ✅
-    ├── lib/
-    │   ├── db.ts                           ✅
-    │   ├── auth.ts                         ✅
-    │   └── providers.tsx                   ✅
-    ├── middleware.ts                        ✅
-    ├── scripts/
-    │   └── create-user.js                  ✅
-    └── .env.local                          ✅
-    ```
 
-    ---
+sales-dashboard/
+├── app/
+│   ├── page.tsx ✅                          — redirect → /dashboard
+│   ├── layout.tsx ✅                        — root layout + ThemeProvider
+│   ├── login/page.tsx ✅                    — หน้า login + JWT cookie
+│   ├── profile/page.tsx ✅                  — เปลี่ยนชื่อ + password
+│   ├── dashboard/
+│   │   ├── page.tsx ✅                      — ตารางร้าน + filter + Country Dropdown + Stats 4 ตัว + DashboardSummaryModal
+│   │   └── [id]/page.tsx ✅                 — place detail + notes + contact + deal cases card
+│   ├── notes/
+│   │   ├── page.tsx ✅                      — note history ของตัวเอง + search
+│   │   └── all/page.tsx ✅                  — note history ทุกคน + อ่านอย่างเดียว
+│   ├── report/page.tsx ❌                   — TODO: Recharts (เก็บไว้ทำทีหลัง)
+│   └── admin/
+│       ├── requests/page.tsx ✅             — จัดการ contact edit requests (Accept/Edit/Reject/Delete)
+│       ├── users/page.tsx ✅                — จัดการ users ทั้งหมด
+│       └── contact-history/page.tsx ✅      — ประวัติ contact ก่อน rescrape + timeline modal
+├── app/api/
+│   ├── auth/
+│   │   ├── login/route.ts ✅               — POST login → set httpOnly JWT cookie
+│   │   ├── logout/route.ts ✅              — POST logout → clear cookie
+│   │   ├── me/route.ts ✅                  — GET current user จาก cookie
+│   │   └── profile/route.ts ✅             — PATCH เปลี่ยนชื่อ + password
+│   ├── dashboard/
+│   │   ├── route.ts ✅                     — GET ตารางร้าน + filter + country filter + pagination
+│   │   ├── stats/route.ts ✅               — GET 4 ตัวเลข: Merchants / Noted / In Progress / Success
+│   │   └── summary/route.ts ✅             — GET summary modal: contact stats + 77 จังหวัด (Promise.all)
+│   ├── export/route.ts ✅                  — GET export CSV + country filter + deal columns
+│   ├── filters/route.ts ✅                 — GET dropdown options: cities / serviceType / countries
+│   ├── notes/
+│   │   ├── route.ts ✅                     — GET list / POST สร้าง note
+│   │   └── [id]/route.ts ✅               — PATCH แก้ / DELETE ลบ + log
+│   ├── places/
+│   │   ├── [id]/route.ts ✅               — GET place detail + contacts ทั้งหมด
+│   │   └── [id]/phones/route.ts ✅        — (deprecated) เดิมใช้จัดการ phone
+│   ├── requests/
+│   │   ├── route.ts ✅                     — GET list / POST สร้าง contact edit request
+│   │   └── [id]/route.ts ✅               — PATCH approve/reject + log
+│   ├── report-issue/route.ts ✅            — POST ส่ง issue → Telegram Bot
+│   ├── deal-cases/
+│   │   ├── route.ts ✅                     — GET list / POST สร้างเคส (pending/inprocess/success/stop)
+│   │   └── [id]/route.ts ✅               — PATCH แก้ไข / DELETE ยกเลิกเคส
+│   ├── admin/contact-history/
+│   │   ├── route.ts ✅                     — GET ประวัติ contact ทั้งหมด + search + date filter
+│   │   └── [placeId]/[contactType]/route.ts ✅ — GET timeline contact รายร้านรายประเภท
+│   └── verifications/route.ts ✅           — GET/POST ระบบ verify contact
+├── components/
+│   ├── LogoutButton.tsx ✅                  — ปุ่ม logout + redirect
+│   ├── ExportModal.tsx ✅                   — modal เลือก filter + columns + export CSV
+│   ├── ThemeToggle.tsx ✅                   — dark/light mode toggle
+│   ├── ReportIssueButton.tsx ✅             — floating button → ส่ง issue Telegram
+│   └── DashboardSummaryModal.tsx ✅         — modal สรุป overview + 77 จังหวัด + Export PDF
+├── lib/
+│   ├── db.ts ✅                             — PostgreSQL connection pool (pg)
+│   ├── auth.ts ✅                           — JWT sign/verify + bcrypt helper
+│   ├── providers.tsx ✅                     — ThemeProvider wrapper
+│   └── constants/
+│       └── regions.ts ✅                    — whitelist 77 จังหวัด + region grouping
+├── middleware.ts ✅                          — route protection + JWT verify จาก cookie
+├── scripts/create-user.js ✅               — CLI สร้าง user ใหม่ + bcrypt hash
+└── .env.local ✅                            — DB / JWT secret / Telegram token
 
     ## 4. Features Status
+## 4. Features Status
 
-    ### ✅ เสร็จแล้ว
-    - [x] Login / Logout / JWT auth
-    - [x] Role-based nav (admin เห็น Requests)
-    - [x] ตาราง + filter (City, Service Type, Status, Booking, Noted)
-    - [x] STATUS badge (🟡 Pending / ✅ Noted / 🔵 Approved)
-    - [x] คลิก row → place detail
-    - [x] Note: เพิ่ม/แก้/ลบ + log + role permission
-    - [x] Export CSV modal — multi-select จังหวัด/serviceType + column selector
-    - [x] Contact Edit Request — แจ้งแก้ไข/ลบ + validation
-    - [x] Admin: Accept/Edit/Reject/Delete + SweetAlert2 confirm
-    - [x] Sale เห็น status request ใน /dashboard/[id]
-    - [x] Note History (ของตัวเอง) + search
-    - [x] Note History All (ทุกคน) + อ่านอย่างเดียว
-    - [x] City whitelist 77 จังหวัด
-    - [x] Service Type 7 groups
-    - [x] Instagram normalize (URL/handle → handle + auto URL)
-    - [x] Profile — เปลี่ยนชื่อ + password
-    - [x] Admin Users — จัดการ user
-    - [x] scripts/create-user.js — CLI
-    - [x] Contact History (admin only) — search + date filter + timeline modal
-    - [x] Report Issue — floating button → Telegram Bot  
-    - [x] phones array แทน phone/phone2 + PhoneRow (add/edit/delete via request)
+### ✅ เสร็จแล้ว
+- [x] Login / Logout / JWT auth
+- [x] Role-based nav (admin เห็น Requests)
+- [x] ตาราง + filter (City, Service Type, Status, Booking, Noted)
+- [x] STATUS badge (🟡 Pending / ✅ Noted / 🔵 Approved)
+- [x] คลิก row → place detail
+- [x] Note: เพิ่ม/แก้/ลบ + log + role permission
+- [x] Export CSV modal — multi-select จังหวัด/serviceType + column selector + deal columns + country filter
+- [x] Contact Edit Request — แจ้งแก้ไข/ลบ + validation
+- [x] Admin: Accept/Edit/Reject/Delete + SweetAlert2 confirm
+- [x] Sale เห็น status request ใน /dashboard/[id]
+- [x] Note History (ของตัวเอง) + search
+- [x] Note History All (ทุกคน) + อ่านอย่างเดียว
+- [x] City whitelist 77 จังหวัด
+- [x] Service Type 7 groups
+- [x] Instagram normalize (URL/handle → handle + auto URL)
+- [x] Profile — เปลี่ยนชื่อ + password
+- [x] Admin Users — จัดการ user
+- [x] scripts/create-user.js — CLI
+- [x] Contact History (admin only) — search + date filter + timeline modal
+- [x] Report Issue — floating button → Telegram Bot
+- [x] phones array แทน phone/phone2 + PhoneRow (add/edit/delete via request)
+- [x] deal_cases — บันทึกเคสการขายต่อร้าน (pending / inprocess / success / stop)
+- [x] deal_status ENUM — 3 / inprocess 🔵 / success 🟢 / stop 🔴
+- [x] API deal-cases — GET / POST / PATCH / DELETE
+- [x] /dashboard/[id] — card 🤝 เคสการขาย + modal บันทึก/แก้ไข/ยกเลิก
+- [x] Stats 4 ตัว — Merchants / Noted / In Progress / Success (แทน Deals เดิม)
+- [x] Country Dropdown + country filter ทุก API
+- [x] DashboardSummaryModal — overview + 77 จังหวัด + Export PDF
+- [x] Telegram Bot token
+- [x] Note Template Button
+- [x] Activity log tab
+- [x] LINE Notify token
+### ❌ TODO
+- [x] /report page — Recharts (เก็บไว้ทำทีหลัง)
 
-    ### ❌ TODO หลัง Demo
-    - [ ] Note Template Button — [โทรติด][โทรไม่รับ][ขอโทรกลับ][ปิดดีล][ปฏิเสธ]
-    - [ ] /report — Recharts (sale: bar+donut / admin: grouped bar + filter by sale)
-    - [ ] LINE Notify — 3 events (request/approve/reject)
-    - [ ] แจ้งปัญหา — floating button → Telegram Bot
-
-    ---
-
-    ## 5. Auth & Permission
-
-    | หน้า | Sale | Admin |
-    |------|------|-------|
-    | /dashboard | ✅ | ✅ |
-    | /dashboard/[id] | ✅ | ✅ |
-    | /notes | ✅ ของตัวเอง | ✅ ของตัวเอง |
-    | /notes/all | ✅ อ่านอย่างเดียว | ✅ อ่านอย่างเดียว |
-    | /admin/requests | ❌ redirect | ✅ |
-    | /admin/users | ❌ redirect | ✅ |
-    | /profile | ✅ | ✅ |
-
-    | action | Sale | Admin |
-    |--------|------|-------|
-    | เพิ่ม note | ✅ | ✅ |
-    | แก้/ลบ note ตัวเอง | ✅ | ✅ |
-    | แก้/ลบ note คนอื่น | ❌ | ✅ |
-    | แจ้งแก้ไข contact | ✅ | ✅ |
-    | approve/reject request | ❌ | ✅ |
-
-    ---
-
-    ## 6. Service Type Groups ทำแล้ว 
-
-    | Group | Label |
-    |-------|-------|
-    | restaurant_food | 🍽️ Restaurant & Food |
-    | cafe_drinks | ☕ Cafe & Drinks |
-    | bar_nightlife | 🍺 Bar & Nightlife |
-    | accommodation | 🏨 Accommodation |
-    | health_beauty | 💆 Health & Beauty |
-    | travel_tourism | ✈️ Travel & Tourism |
-    | other | 🛍️ Other |
-
-    ---
-
-    ## 7. Note Template (TODO) ยังไม่ทำรอ หลังพรีเซ้น 
-
-    ```
-    [โทรติด]     → "โทรติด [ชื่อ] สนใจ/ไม่สนใจ เพราะ..."
-    [โทรไม่รับ]  → "โทรไม่รับ ครั้งที่ "
-    [ขอโทรกลับ]  → "ขอโทรกลับ วัน/เวลา "
-    [ปิดดีล]     → "ปิดได้แล้ว "
-    [ปฏิเสธ]     → "ปฏิเสธ เพราะ..."
-    ```
-
-    ---
-
-    ## 8. Accounts ทดสอบ รอทำหลังตกแต่ง 
-
-    | Email | Password | Role |
-    |-------|----------|------|
-    | admin@sales.com | admin1234 | admin |
-    | test@test.com | sale1234 | sale |
-    | sale2@sales.com | sale2pass | sale |
-
-    ---
-
-    ## 9. Pending Decisions
-
-    | หัวข้อ | สถานะ |
-    |--------|-------|
-    | LINE Notify token | รอสร้าง |
-    | Telegram Bot token | แผนใหม่ — รอตัดสินใจ |
-    | DB บริษัท (host/credentials) | รอบริษัทแจ้ง |
-    | /report design | รอตัดสินใจหลัง demo |
-    | Activity log tab | TODO หลัง demo |
-
-    ---
-
-    ## 10. Demo 20 พ.ค. 🎯
-
-    **พร้อม demo แล้ว** — feature หลักครบทั้งหมด
+### ⏳ รอ / Pending
+- [ ] DB บริษัท (host/credentials) — รอทีมแจ้ง
+- [ ] Deploy Dashboard ขึ้น server จริง — รอ DB บริษัท
+- [ ] ปุ่ม Link ใน CMS → Dashboard URL — ทำหลัง deploy
+- [ ] Feature เพิ่มเติมจากทีม Sale — รอรายละเอียด
+สิ่งที่หัวหน้าตัดสินใจชัดเจน
+1. Deploy แยกกันเลย
+"db กับ repo น้องทำแยกกันอยู่"
+Dashboard อยู่คนละ server กับ CMS
+ไม่ต้องยุ่งกับ CMS เลย
+2. ไม่ต้อง SSO / ไม่ต้อง pass token
+"แค่ deploy แยกเลย แล้วใส่ปุ่ม แค่กด link มา url เรา ไม่ต้อง pass auth อะไรเลย"
+CMS ใส่แค่ปุ่ม → link มา URL Dashboard
+ไม่มี shared session / ไม่มี token exchange
+3. Sale login เอง
+"ให้ sale ไป login เองอีกรอบ ได้ ไม่ต้องนั่งไล่ flow กับ pass auth token"
+Sale กดมาจาก CMS → เจอหน้า Login → กรอก credential เอง
+CMS admin ใช้งานเอง ไม่ต้องอำนวยความสะดวกเยอะ

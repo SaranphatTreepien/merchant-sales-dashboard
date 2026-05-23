@@ -240,14 +240,21 @@ const SERVICE_TYPE_MAP: Record<string, string[]> = {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+  const country = searchParams.get("country") || "ALL";
 
   const cities = searchParams.getAll("city");
   const serviceTypes = searchParams.getAll("serviceType");
   const hasBooking = searchParams.get("hasBooking");
-  const noted = searchParams.get("noted"); // ← เพิ่ม
-  const conditions: string[] = ["1=1"];
+  const noted = searchParams.get("noted");
+
+  const conditions: string[] = ["1=1"]; // ← ขาดบรรทัดนี้
   const values: unknown[] = [];
   let i = 1;
+
+  if (country !== "ALL") {
+    conditions.push(`p.country = $${i++}`);
+    values.push(country);
+  }
 
   if (cities.length > 0) {
     conditions.push(`p.city = ANY($${i++})`);
@@ -287,7 +294,10 @@ export async function GET(req: NextRequest) {
         MAX(pig.instagram_url) AS instagram_url,
         MAX(pm.url) AS messenger_url,
         MAX(pw.number) AS whatsapp,
-        MAX(pt.telegram_url) AS telegram_url
+        MAX(pt.telegram_url) AS telegram_url,
+        dc.status           AS deal_status,
+        dc.reference_code   AS reference_code,
+        dc.sale_name AS deal_by
       FROM places p
       LEFT JOIN place_phones     ph  ON ph.place_id = p.place_id AND ph.deleted_at IS NULL
       LEFT JOIN place_lines      pl  ON pl.place_id = p.place_id
@@ -297,16 +307,25 @@ export async function GET(req: NextRequest) {
       LEFT JOIN place_messengers pm  ON pm.place_id = p.place_id
       LEFT JOIN place_whatsapps  pw  ON pw.place_id = p.place_id
       LEFT JOIN place_telegrams  pt  ON pt.place_id = p.place_id
-      LEFT JOIN (                                                   -- ← เพิ่ม
-  SELECT place_id, COUNT(*) AS note_count
-  FROM place_notes
-  GROUP BY place_id
-) pn ON pn.place_id = p.place_id
+        
+      LEFT JOIN (
+        SELECT place_id, COUNT(*) AS note_count
+        FROM place_notes
+        GROUP BY place_id
+      ) pn ON pn.place_id = p.place_id
+      LEFT JOIN LATERAL (
+        SELECT dc.status, dc.reference_code, u.name AS sale_name
+        FROM deal_cases dc
+        LEFT JOIN users u ON u.id = dc.sale_id
+        WHERE dc.place_id = p.place_id
+        ORDER BY dc.updated_at DESC
+        LIMIT 1
+      ) dc ON TRUE
       WHERE ${where}
       GROUP BY p.place_id, p.name, p.address, p.city, p.country,
         p.google_map_url, p.service_type, p.service_types,
         p.business_status, p.website, p.rating, p.total_reviews,
-        p.description, p.has_booking, p.opening_hours
+p.description, p.has_booking, p.opening_hours, dc.status, dc.reference_code, dc.sale_name
       ORDER BY p.city, p.name
     `,
       values,

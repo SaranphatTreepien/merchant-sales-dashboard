@@ -30,11 +30,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${dmSans.className} min-h-screen bg-[#F5F3EE] dark:bg-[#0E0E12] text-slate-900 dark:text-slate-100 antialiased`}>
+      <body className={`${dmSans.className} min-h-screen bg-slate-100 dark:bg-[#0E0E12] text-slate-900 dark:text-slate-100 antialiased`}>
         <Providers>
 
           {!isLoginPage && (
             <header className="sticky top-0 z-50 w-full">
+              <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.0.0/css/flag-icons.min.css" />
               <div className="min-h-14 w-full border-b border-slate-200/80 bg-white/90 shadow-sm shadow-black/[0.03] backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#16161b]/90 dark:shadow-black/30">
                 <div className="mx-auto flex min-h-14 max-w-screen-xl items-center gap-2 px-3 py-2 sm:gap-4 sm:px-5 sm:py-0">
 
@@ -187,15 +188,15 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
     <Link
       href={href}
       className="
-        shrink-0 rounded-full px-3 py-1.5
-        text-[12px] font-semibold
-        text-slate-500 dark:text-white/45
-        border border-transparent
-        transition-all duration-200
-        hover:text-slate-900 dark:hover:text-white
-        hover:bg-slate-100 dark:hover:bg-white/[0.06]
-        hover:border-slate-200/80 dark:hover:border-white/[0.08]
-      "
+  shrink-0 rounded-full px-3 py-1.5
+  text-[12px] font-semibold
+text-slate-700 dark:text-white/45
+  border border-transparent
+  transition-all duration-200
+  hover:text-slate-900 dark:hover:text-white
+  hover:bg-slate-100 dark:hover:bg-white/[0.06]
+  hover:border-slate-200/80 dark:hover:border-white/[0.08]
+"
     >
       {children}
     </Link>

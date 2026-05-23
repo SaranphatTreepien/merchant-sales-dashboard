@@ -11,7 +11,9 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
+    "html2canvas-pro": "^2.0.2",
     "jose": "^6.2.3",
+    "jspdf": "^4.2.1",
     "next": "16.2.6",
     "next-themes": "^0.4.6",
     "pg": "^8.20.0",

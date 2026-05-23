@@ -9,16 +9,20 @@ export async function GET(
 
   try {
     const { rows } = await pool.query(
-      `
-      SELECT
+      `SELECT
   p.place_id,
   p.name,
   p.city,
   p.business_status,
   p.rating,
   p.scraped_at,
-  p.website,          -- ✅ เพิ่มตรงนี้
-  p.google_map_url,
+  p.website,         
+  p.service_type,       -- ✅ เพิ่ม
+
+    p.google_map_url,
+  p.has_booking,
+  p.country,
+    c.line_oa, c.line_personal, c.line_url,
   p.has_booking,
     c.line_oa, c.line_personal, c.line_url,
     c.email, c.facebook_url,
@@ -50,8 +54,7 @@ export async function GET(
         LEFT JOIN place_telegrams  ptg ON ptg.place_id = p2.place_id
         WHERE p2.place_id = p.place_id
       ) c ON true
-      WHERE p.place_id = $1
-    `,
+      WHERE p.place_id = $1`,
       [id],
     );
 

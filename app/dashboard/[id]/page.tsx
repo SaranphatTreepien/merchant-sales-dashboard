@@ -19,10 +19,13 @@ type PlaceDetail = {
   place_id: string
   name: string
   city: string
+  country: string | null
   business_status: string
   rating: string | null
   scraped_at: string
   website: string | null   // ✅ เพิ่มตรงนี้
+
+  service_type: string | null   // ✅ เพิ่ม
   // contacts
 
   line_oa: string | null
@@ -59,6 +62,18 @@ type ContactRequest = {
   created_at: string
   reject_reason?: string | null  // เพิ่มตรงนี้
 }
+type DealCase = {
+  id: number
+  place_id: string
+  sale_id: string
+  sale_name: string
+  sale_email: string
+  reference_code: string
+  status: 'pending' | 'success' | 'stop'  // ← เพิ่ม stop
+  note: string | null
+  created_at: string
+  updated_at: string
+}
 type HistoryEvent = {
   source_type: 'scraper' | 'manual'
   table_name: string
@@ -94,7 +109,31 @@ function statusLabel(status: string) {
   if (status === 'rejected') return 'Rejected'
   return status
 }
-
+function serviceTypeLabel(s: string): string {
+  const map: Record<string, string> = {
+    restaurant: '🍽️ ร้านอาหาร',
+    cafe: '☕ คาเฟ่',
+    coffee_shop: '☕ ร้านกาแฟ',
+    hotel: '🏨 โรงแรม',
+    resort_hotel: '🏖️ รีสอร์ท',
+    hostel: '🛏️ โฮสเทล',
+    noodle_shop: '🍜 ร้านก๋วยเตี๋ยว',
+    thai_restaurant: '🍛 อาหารไทย',
+    bakery: '🥐 เบเกอรี่',
+    bar: '🍺 บาร์',
+    family_restaurant: '👨‍👩‍👧 ร้านอาหารครอบครัว',
+    fast_food_restaurant: '🍟 ฟาสต์ฟู้ด',
+    hair_salon: '💈 ร้านทำผม',
+    beauty_salon: '💅 ร้านเสริมสวย',
+    nail_salon: '💅 ร้านทำเล็บ',
+    massage_spa: '💆 นวด & สปา',
+    spa: '🧖 สปา',
+    seafood_restaurant: '🦞 อาหารทะเล',
+    japanese_restaurant: '🍣 อาหารญี่ปุ่น',
+    buffet_restaurant: '🍱 บุฟเฟต์',
+  }
+  return map[s] ?? s.replace(/_/g, ' ')
+}
 function businessStatusLabel(s: string) {
   if (s === 'OPERATIONAL') return { label: 'เปิดอยู่', cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800/50' }
   if (s === 'CLOSED_TEMPORARILY') return { label: 'ปิดชั่วคราว', cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800/50' }
@@ -106,6 +145,20 @@ function normalizeInstagram(input: string): string {
   const match = input.match(/instagram\.com\/([^/?]+)/)
   if (match) return match[1].replace(/\/$/, '')
   return input.replace(/^@/, '').trim()
+}
+function dealStatusBadge(status: string) {
+  if (status === 'success') return {
+    label: '✅ สำเร็จ',
+    cls: 'bg-[#40BEB6]/10 text-[#40BEB6] border-[#40BEB6]/20 dark:bg-[#40BEB6]/20'
+  }
+  if (status === 'stop') return {
+    label: '🔴 ยุติการติดต่อ',
+    cls: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800/50'
+  }
+  return {
+    label: '🔵 กำลังดำเนินการ',
+    cls: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800/50'
+  }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -717,6 +770,50 @@ export default function PlaceDetailPage() {
   const [history, setHistory] = useState<HistoryEvent[]>([])
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [dealCase, setDealCase] = useState<DealCase | null>(null)
+  const [dealLoading, setDealLoading] = useState(false)
+  const [dealModalOpen, setDealModalOpen] = useState(false)
+  const [dealRefCode, setDealRefCode] = useState('')
+  const [dealStatus, setDealStatus] = useState<'pending' | 'success' | 'stop'>('pending')
+  const [dealNote, setDealNote] = useState('')
+  const [dealSaving, setDealSaving] = useState(false)
+
+  const fetchDeal = async () => {
+    const res = await fetch(`/api/deal-cases?place_id=${placeId}`)
+    const json = await res.json()
+    setDealCase(json.data?.[0] ?? null)
+  }
+
+  useEffect(() => { if (placeId) fetchDeal() }, [placeId])
+
+  const handleSaveDeal = async () => {
+    if (dealStatus === 'success' && !dealRefCode.trim()) return
+    setDealSaving(true)
+    if (dealCase) {
+      await fetch(`/api/deal-cases/${dealCase.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reference_code: dealRefCode, status: dealStatus, note: dealNote }),
+      })
+    } else {
+      await fetch('/api/deal-cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          place_id: placeId,
+          reference_code: dealRefCode.trim() || null,
+          status: dealStatus,
+          note: dealNote
+        }),
+      })
+    }
+    setDealSaving(false)
+    setDealModalOpen(false)
+    fetchDeal()
+  }
+
+
+
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => setCurrentUser(j.user))
   }, [])
@@ -917,15 +1014,37 @@ export default function PlaceDetailPage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="break-words text-2xl font-extrabold text-gray-900 dark:text-white sm:text-3xl tracking-tight">{place.name}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="break-words text-2xl font-extrabold text-gray-900 dark:text-white sm:text-3xl tracking-tight">
+            {place.name}
+          </h1>
+          {dealCase && (
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-sm font-bold border ${dealStatusBadge(dealCase.status).cls}`}>
+              {dealStatusBadge(dealCase.status).label.split(' ')[0]}
+              {dealCase.reference_code
+                ? <span className="font-mono ml-1">{dealCase.reference_code}</span>
+                : <span className="ml-1">{dealStatusBadge(dealCase.status).label.split(' ').slice(1).join(' ')}</span>
+              }
+            </span>
+          )}
+        </div>
         <p className="mt-1 break-all text-sm font-mono text-gray-400 dark:text-slate-500">{place.place_id}</p>
 
         <div className="flex items-center gap-2.5 mt-4 flex-wrap">
+          {place.country && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
+              <span
+                className={`fi fi-${place.country.toLowerCase()}`}
+                style={{ width: '1.25rem', height: '0.875rem', borderRadius: '2px', flexShrink: 0 }}
+              />
+              {place.country}
+            </span>
+          )}
           <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${bStatus.cls}`}>{bStatus.label}</span>
-
-          {place.city && (
-            <span className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-300">
-              📍 {place.city}
+          {/* ใหม่ — เพิ่มหลัง city badge */}
+          {place.service_type && (
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20">
+              {serviceTypeLabel(place.service_type)}
             </span>
           )}
           {place.rating && (
@@ -1069,7 +1188,156 @@ export default function PlaceDetailPage() {
 
           </div>
         </div>  {/* ปิด card Contacts */}
+        {/* ── Deal Case ── */}
+        <div className="lg:col-span-7 lg:col-start-1 order-2 lg:order-2 rounded-2xl border border-gray-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              🤝 เคสการขาย
+            </h2>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setDealRefCode(dealCase?.reference_code ?? '')
+                  setDealStatus(dealCase?.status ?? 'pending')
+                  setDealNote(dealCase?.note ?? '')
+                  setDealModalOpen(true)
+                }}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#40BEB6] text-white hover:bg-[#35a099] transition-colors"
+              >
+                {dealCase ? '✏️ แก้ไขเคส' : '+ บันทึกเคส'}
+              </button>
+              {dealCase && (
+                <button
+                  onClick={async () => {
+                    const Swal = (await import('sweetalert2')).default
+                    const result = await Swal.fire({
+                      title: 'ยืนยันยกเลิกเคส?',
+                      text: 'ข้อมูลเคสนี้จะถูกลบออก',
+                      icon: 'warning',
+                      showCancelButton: true,
+                      confirmButtonColor: '#ef4444',
+                      cancelButtonColor: '#6b7280',
+                      confirmButtonText: 'ยืนยัน',
+                      cancelButtonText: 'ไม่ยกเลิก',
+                      background: window.matchMedia('(prefers-color-scheme: dark)').matches ? '#1e293b' : '#fff',
+                      color: window.matchMedia('(prefers-color-scheme: dark)').matches ? '#f1f5f9' : '#111827',
+                    })
+                    if (!result.isConfirmed) return
+                    await fetch(`/api/deal-cases/${dealCase.id}`, { method: 'DELETE' })
+                    setDealCase(null)
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white dark:bg-red-500/10 dark:text-red-400 transition-colors"
+                >
+                  🗑️ ยกเลิกเคส
+                </button>
+              )}
+            </div>
+          </div>
 
+          {dealCase ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${dealStatusBadge(dealCase.status).cls}`}>
+                  {dealStatusBadge(dealCase.status).label}
+                </span>
+                {dealCase.reference_code && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-sm font-bold font-mono bg-[#40BEB6]/10 text-[#40BEB6] border border-[#40BEB6]/20 dark:bg-[#40BEB6]/20">
+                    🔖 {dealCase.reference_code}
+                  </span>
+                )}
+                <span className="text-xs text-gray-500 dark:text-slate-400">
+                  โดย <span className="font-semibold text-gray-700 dark:text-slate-300">{dealCase.sale_name}</span>
+                </span>
+                <span className="text-xs text-gray-400 dark:text-slate-500">{formatDate(dealCase.updated_at)}</span>
+              </div>
+              <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800 px-4 py-3">
+                <p className="text-[11px] text-gray-400 dark:text-slate-500 mb-1">Reference Code</p>
+                <p className="text-sm font-mono font-semibold text-gray-800 dark:text-gray-200">
+                  {dealCase.reference_code || '—'}
+                </p>
+              </div>
+              {dealCase.note && (
+                <p className="text-xs text-gray-600 dark:text-slate-400 border-l-2 border-[#40BEB6]/40 pl-3">{dealCase.note}</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 dark:text-slate-500 py-4 text-center border border-dashed border-gray-200 dark:border-slate-700 rounded-lg">
+              ยังไม่มีการบันทึกเคส
+            </p>
+          )}
+          {/* Modal */}
+          {dealModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+              <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-800">
+                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-4">
+                  {dealCase ? 'แก้ไขเคส' : 'บันทึกเคสใหม่'}
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5 block">
+                      Reference Code{' '}
+                      {dealStatus === 'success'
+                        ? <span className="text-red-500">*</span>
+                        : <span className="text-gray-400 font-normal ml-1">(optional)</span>}
+                      <span className="text-gray-400 font-normal ml-1">สูงสุด 30 ตัวอักษร</span>
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={30}
+                      value={dealRefCode}
+                      onChange={e => setDealRefCode(e.target.value)}
+                      placeholder="กรอก Reference Code"
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#40BEB6] focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white transition-all"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1 text-right">{dealRefCode.length}/30</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5 block">สถานะ</label>
+                    <div className="flex gap-2">
+                      {([
+                        { value: 'pending', label: '🔵 กำลังดำเนินการ', active: 'bg-blue-500 text-white border-blue-500' },
+                        { value: 'success', label: '✅ สำเร็จ', active: 'bg-[#40BEB6] text-white border-[#40BEB6]' },
+                        { value: 'stop', label: '🔴 ยุติการติดต่อ', active: 'bg-red-500 text-white border-red-500' },
+                      ] as const).map(s => (
+                        <button
+                          key={s.value}
+                          onClick={() => setDealStatus(s.value)}
+                          className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-all ${dealStatus === s.value
+                            ? s.active
+                            : 'bg-gray-50 text-gray-600 border-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-600'
+                            }`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5 block">หมายเหตุ (Optional)</label>
+                    <textarea
+                      rows={2}
+                      value={dealNote}
+                      onChange={e => setDealNote(e.target.value)}
+                      placeholder="รายละเอียดเพิ่มเติม..."
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#40BEB6] focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white resize-none transition-all"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end mt-5">
+                  <button
+                    onClick={() => setDealModalOpen(false)}
+                    className="px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-white transition-colors"
+                  >ยกเลิก</button>
+                  <button
+                    onClick={handleSaveDeal}
+                    disabled={dealSaving || (dealStatus === 'success' && !dealRefCode.trim())}
+                    className="px-5 py-2 bg-[#40BEB6] text-white text-xs font-semibold rounded-lg hover:bg-[#35a099] disabled:opacity-50 transition-colors"
+                  >{dealSaving ? 'กำลังบันทึก...' : 'บันทึก'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
         {/* ── 2. Notes ── */}
 
         {/* ── 2. Notes (Desktop ขวาบน / Mobile อันดับ 2) ── */}
@@ -1094,7 +1362,7 @@ export default function PlaceDetailPage() {
               <button
                 onClick={handleAddNote}
                 disabled={addingNote || !newNote.trim()}
-                className="rounded-lg bg-[#40BEB6] px-5 py-2 text-sm font-semibold text-white hover:bg-[#35a099] disabled:opacity-40 disabled:bg-slate-600 disabled:text-slate-400 transition-colors shadow-sm shadow-[#40BEB6]/20"
+                className="rounded-lg bg-[#40BEB6] px-5 py-2 text-sm font-body: JSON.stringify({ place_id: placeId, reference_code: dealRefCode, status: dealStatus, note: dealNote }), text-white hover:bg-[#35a099] disabled:opacity-40 disabled:bg-slate-600 disabled:text-slate-400 transition-colors shadow-sm shadow-[#40BEB6]/20"
               >
                 {addingNote ? 'กำลังบันทึก...' : 'เพิ่ม Note'}
               </button>

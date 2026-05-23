@@ -19,9 +19,11 @@ export async function GET(req: NextRequest) {
   const hasEmail = searchParams.get("hasEmail") === "1";
   const hasWhatsapp = searchParams.get("hasWhatsapp") === "1";
   const hasTelegram = searchParams.get("hasTelegram") === "1";
+  const hasDeal = searchParams.get("hasDeal");
+  const hasTiktok = searchParams.get("hasTiktok") === "1";
   const hasBooking = searchParams.get("hasBooking");
   const noted = searchParams.get("noted");
-
+  const country = searchParams.get("country");
   // Pagination (ไม่ใช้ตอน export)
   const page = parseInt(searchParams.get("page") || "1");
   const limit = 20;
@@ -33,17 +35,38 @@ export async function GET(req: NextRequest) {
     const values: unknown[] = [];
     let i = 1;
 
+    if (country && country !== "ALL") {
+      conditions.push(`p.country = $${i++}`);
+      values.push(country);
+    }
     // Search: ชื่อร้าน หรือ place_id
     if (search) {
-      conditions.push(`(p.name ILIKE $${i} OR p.place_id ILIKE $${i + 1})`);
-      values.push(`%${search}%`, `%${search}%`);
-      i += 2;
+      conditions.push(`(
+    p.name ILIKE $${i} OR 
+    p.place_id ILIKE $${i + 1} OR
+    EXISTS (
+      SELECT 1 FROM deal_cases dc2 
+      WHERE dc2.place_id = p.place_id 
+      AND dc2.reference_code ILIKE $${i + 2}
+    )
+  )`);
+      values.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      i += 3;
     }
 
     // Dropdown filters
     if (city) {
-      conditions.push(`p.city = $${i++}`);
-      values.push(city);
+      if (city === "other") {
+        const { getCitiesByCountry } = await import("@/lib/constants/regions");
+        const whitelist = getCitiesByCountry(country || "TH");
+        conditions.push(
+          `(p.city IS NULL OR p.city = '' OR p.city != ALL($${i++}))`,
+        );
+        values.push(whitelist);
+      } else {
+        conditions.push(`p.city = $${i++}`);
+        values.push(city);
+      }
     }
     if (serviceType) {
       const SERVICE_TYPE_MAP: Record<string, string[]> = {
@@ -336,6 +359,30 @@ export async function GET(req: NextRequest) {
     WHERE pt2.place_id = p.place_id
   )`);
     }
+    if (hasDeal === "yes")
+      conditions.push(
+        `EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id)`,
+      );
+    if (hasDeal === "no")
+      conditions.push(
+        `NOT EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id)`,
+      );
+    if (hasDeal === "success")
+      conditions.push(
+        `EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id AND dc2.status = 'success')`,
+      );
+    if (hasDeal === "pending")
+      conditions.push(
+        `EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id AND dc2.status = 'pending')`,
+      );
+    if (hasDeal === "stop")
+      conditions.push(
+        `EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id AND dc2.status = 'stop')`,
+      );
+    if (hasTiktok)
+      conditions.push(
+        `EXISTS (SELECT 1 FROM place_tiktoks ptk2 WHERE ptk2.place_id = p.place_id)`,
+      );
     if (hasBooking === "yes") conditions.push(`p.has_booking = TRUE`);
     if (hasBooking === "no")
       conditions.push(`(p.has_booking = FALSE OR p.has_booking IS NULL)`);
@@ -354,75 +401,122 @@ export async function GET(req: NextRequest) {
 
     const { rows } = await pool.query(
       `
-      SELECT
-        p.place_id,
-        p.name,
-        p.city,
-        p.service_type,
-        p.business_status,
-        p.rating,
-        p.google_map_url,
-        p.has_booking,
-
-        -- Primary phone
-        MAX(ph.number) AS phone,
-        -- Secondary phone (non-primary)
-        MAX(CASE WHEN (ph.is_primary IS NULL OR ph.is_primary = FALSE) THEN ph.number END) AS phone2,
-
-        MAX(pl.line_id)        AS line_id,
-        MAX(pe.address)        AS email,
-        MAX(pfb.url)           AS facebook_url,
-        MAX(pig.handle)        AS instagram_handle,
-        MAX(pw.number)         AS whatsapp,
-        MAX(ptg.telegram_url)  AS telegram_url,
-        -- Last note (subquery)
-        (SELECT n.note FROM place_notes n
-          WHERE n.place_id = p.place_id
-          ORDER BY n.created_at DESC LIMIT 1) AS last_note,
-
-        (SELECT u.name FROM place_notes n
-          JOIN users u ON u.id = n.user_id
-          WHERE n.place_id = p.place_id
-          ORDER BY n.created_at DESC LIMIT 1) AS last_note_by,
-
-        (SELECT n.created_at FROM place_notes n
-          WHERE n.place_id = p.place_id
-          ORDER BY n.created_at DESC LIMIT 1) AS last_note_at,
-
-        -- Pending request count
-        (SELECT COUNT(*) FROM contact_edit_requests r
-          WHERE r.place_id = p.place_id
-          AND r.status = 'pending') AS pending_requests
-
-      FROM places p
-      LEFT JOIN place_phones     ph  ON ph.place_id  = p.place_id AND ph.deleted_at IS NULL
-      LEFT JOIN place_lines      pl  ON pl.place_id  = p.place_id
-      LEFT JOIN place_emails     pe  ON pe.place_id  = p.place_id
-      LEFT JOIN place_facebooks  pfb ON pfb.place_id = p.place_id
-      LEFT JOIN place_instagrams pig ON pig.place_id = p.place_id
-      LEFT JOIN place_whatsapps  pw  ON pw.place_id  = p.place_id
-      LEFT JOIN place_telegrams  ptg ON ptg.place_id = p.place_id
-      WHERE ${where}
-      GROUP BY
-        p.place_id, p.name, p.city, p.service_type,
-        p.business_status, p.rating, p.google_map_url, p.has_booking,
-        p.scraped_at
-      ORDER BY p.scraped_at DESC
-      ${paginationClause}
-    `,
+   WITH filtered AS (
+    SELECT p.place_id, p.scraped_at,
+      p.last_activity_at,
+      COUNT(*) OVER() AS total_count
+    FROM places p
+    WHERE ${where}
+  ),
+  ranked AS (
+    SELECT *
+    FROM filtered
+    ORDER BY last_activity_at DESC NULLS LAST, scraped_at DESC
+    ${paginationClause}
+  )
+  SELECT
+    p.place_id, p.name, p.city, p.service_type,
+    p.business_status, p.rating, p.google_map_url,
+    p.has_booking, p.country,
+    MAX(ph.number) AS phone,
+    MAX(CASE WHEN (ph.is_primary IS NULL OR ph.is_primary = FALSE) THEN ph.number END) AS phone2,
+    MAX(pl.line_id) AS line_id,
+    MAX(pe.address) AS email,
+    MAX(pfb.url) AS facebook_url,
+    MAX(pig.handle) AS instagram_handle,
+    MAX(pw.number) AS whatsapp,
+    MAX(ptg.telegram_url) AS telegram_url,
+    deal.status AS deal_status,
+    deal.reference_code AS deal_reference_code,
+    deal.sale_name AS deal_sale_name,
+    deal.updated_at AS deal_updated_at,
+    ln.note AS last_note,
+    ln.author AS last_note_by,
+    ln.created_at AS last_note_at,
+    COALESCE(pr.cnt, 0) AS pending_requests,
+    ranked.last_activity_at,
+    ranked.total_count
+  FROM ranked
+  JOIN places p ON p.place_id = ranked.place_id
+  LEFT JOIN place_phones ph ON ph.place_id = p.place_id AND ph.deleted_at IS NULL
+  LEFT JOIN place_lines pl ON pl.place_id = p.place_id
+  LEFT JOIN place_emails pe ON pe.place_id = p.place_id
+  LEFT JOIN place_facebooks pfb ON pfb.place_id = p.place_id
+  LEFT JOIN place_instagrams pig ON pig.place_id = p.place_id
+  LEFT JOIN place_whatsapps pw ON pw.place_id = p.place_id
+  LEFT JOIN place_telegrams ptg ON ptg.place_id = p.place_id
+  LEFT JOIN LATERAL (
+    SELECT dc.status, dc.reference_code, dc.updated_at, u.name AS sale_name
+    FROM deal_cases dc
+    LEFT JOIN users u ON u.id::text = dc.sale_id::text
+    WHERE dc.place_id = p.place_id
+    LIMIT 1
+  ) deal ON true
+  LEFT JOIN LATERAL (
+    SELECT n.note, n.created_at, u.name AS author
+    FROM place_notes n
+    JOIN users u ON u.id = n.user_id
+    WHERE n.place_id = p.place_id
+    ORDER BY n.created_at DESC
+    LIMIT 1
+  ) ln ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS cnt
+    FROM contact_edit_requests r
+    WHERE r.place_id = p.place_id AND r.status = 'pending'
+  ) pr ON true
+  GROUP BY
+    p.place_id, p.name, p.city, p.service_type,
+    p.business_status, p.rating, p.google_map_url,
+    p.has_booking, p.scraped_at, p.country,
+    deal.status, deal.reference_code, deal.updated_at, deal.sale_name,
+    ln.note, ln.created_at, ln.author,
+    pr.cnt, ranked.last_activity_at, ranked.total_count
+  ORDER BY ranked.last_activity_at DESC NULLS LAST, p.scraped_at DESC
+`,
       values,
     );
 
-    // ── Count (ไม่ทำตอน export เพราะไม่จำเป็น) ────────────────────────────
-    let total = rows.length;
-    if (!isExport) {
-      const countResult = await pool.query(
-        `SELECT COUNT(*) FROM places p WHERE ${where}`,
-        values,
-      );
-      total = parseInt(countResult.rows[0].count);
-    }
+    // ── Count — ดึงจาก window function แทน query แยก ──────────────────────
+    const hasFilter =
+      (country && country !== "ALL") ||
+      search ||
+      city ||
+      serviceType ||
+      status ||
+      hasPhone ||
+      hasLine ||
+      hasFb ||
+      hasIg ||
+      hasEmail ||
+      hasWhatsapp ||
+      hasTelegram ||
+      hasDeal ||
+      hasTiktok ||
+      hasBooking ||
+      noted;
 
+    let total: number;
+    if (isExport) {
+      total = rows.length;
+    } else if (!hasFilter) {
+      // ไม่มี filter → ใช้ reltuples (เร็ว ~1ms ไม่ต้อง scan)
+      const approxResult = await pool.query(
+        `SELECT reltuples::bigint AS total FROM pg_class WHERE relname = 'places'`,
+      );
+      total = parseInt(approxResult.rows[0]?.total ?? "0");
+    } else {
+      // มี filter → COUNT จริง (แม่นยำ)
+      total = parseInt(rows[0]?.total_count ?? "0");
+    }
+    console.log(
+      "[dashboard] rows:",
+      rows.length,
+      "total:",
+      total,
+      "country:",
+      country,
+    );
     return NextResponse.json({
       data: rows,
       total,

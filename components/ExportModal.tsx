@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { COUNTRY_LABELS } from '@/lib/constants/regions'
+
 import Swal from 'sweetalert2'
 type ServiceGroup = { label: string; value: string; types: string[] }
 type Filters = {
@@ -40,6 +42,10 @@ const ALL_COLUMNS = [
     { key: 'messenger_url', label: 'Messenger', group: 'Contact' },
     { key: 'whatsapp', label: 'WhatsApp', group: 'Contact' },
     { key: 'telegram_url', label: 'Telegram', group: 'Contact' },
+    // Deal
+    { key: 'deal_status', label: 'Deal Status', group: 'Deal' },
+    { key: 'reference_code', label: 'Reference Code', group: 'Deal' },
+    { key: 'deal_by', label: 'Deal By (Sale)', group: 'Deal' },
 ]
 
 function formatDate(iso: string | null) {
@@ -63,11 +69,13 @@ function Section({ id, title, open, onToggle, children }: {
         </div>
     )
 }
-export function ExportModal({ cities, serviceGroups, onClose }: {
+export function ExportModal({ cities, serviceGroups, onClose, country }: {
+
     cities: string[]
     serviceGroups: ServiceGroup[]
     currentFilters: Filters
     onClose: () => void
+    country: string
 }) {
     const [selCities, setSelCities] = useState<Set<string>>(new Set())
     const [selServiceTypes, setSelServiceTypes] = useState<Set<string>>(new Set())
@@ -95,10 +103,10 @@ export function ExportModal({ cities, serviceGroups, onClose }: {
     }
 
     const handleDownload = async () => {
-        setDownloading(true)
+        const countryLabel = country === 'ALL' ? 'All Countries' : (COUNTRY_LABELS[country]?.name ?? country)
         const confirm = await Swal.fire({
             title: 'Export CSV?',
-            text: `${selCities.size > 0 ? selCities.size + ' จังหวัด' : 'ทุกจังหวัด'} · ${selectedCols.size} columns`,
+            text: `${countryLabel} · ${selCities.size > 0 ? selCities.size + ' จังหวัด' : 'ทุกจังหวัด'} · ${selectedCols.size} columns`,
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'Download',
@@ -106,19 +114,18 @@ export function ExportModal({ cities, serviceGroups, onClose }: {
             confirmButtonColor: '#16a34a',
         })
         if (!confirm.isConfirmed) return
-        try {   // ← เพิ่มตรงนี้
+        setDownloading(true)
+        try {
             const params = new URLSearchParams()
             params.set('export', '1')
+            params.set('country', country)
             if (hasBooking) params.set('hasBooking', hasBooking)
-            if (noted) params.set('noted', noted) // ← เพิ่ม
-
-            // multi city/serviceType — ส่งหลายค่าได้
+            if (noted) params.set('noted', noted)
             selCities.forEach(c => params.append('city', c))
             selServiceTypes.forEach(s => params.append('serviceType', s))
 
             const res = await fetch(`/api/export?${params}`)
             const json = await res.json()
-            // เพิ่มตรงนี้
             if (!res.ok) {
                 await Swal.fire({
                     title: 'เกิดข้อผิดพลาด',
@@ -130,25 +137,28 @@ export function ExportModal({ cities, serviceGroups, onClose }: {
                 return
             }
             const rows = json.data || []
-
             const cols = ALL_COLUMNS.filter(c => selectedCols.has(c.key))
             const headers = cols.map(c => c.label)
-
             const csvRows = rows.map((r: Record<string, unknown>) =>
                 cols.map(c => {
                     if (c.key === 'has_booking') return r.has_booking ? 'Yes' : 'No'
+                    if (c.key === 'deal_status') {
+                        if (r.deal_status === 'success') return 'สำเร็จ'
+                        if (r.deal_status === 'pending') return 'รอ / ติดปัญหา'
+                        return ''
+                    }
                     if (c.key === 'opening_hours') return JSON.stringify(r.opening_hours || '')
                     if (c.key === 'service_types') return JSON.stringify(r.service_types || '')
                     return String(r[c.key] ?? '')
                 }).map(v => `"${v.replace(/"/g, '""')}"`).join(',')
             )
-
             const csv = [headers.join(','), ...csvRows].join('\n')
             const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
             const url = URL.createObjectURL(blob)
             const a = document.createElement('a')
             a.href = url
-            a.download = `export-${new Date().toISOString().slice(0, 10)}.csv`
+            const countrySlug = country === 'ALL' ? 'all' : (COUNTRY_LABELS[country]?.flag ?? country.toLowerCase())
+            a.download = `export-${countrySlug}-${new Date().toISOString().slice(0, 10)}.csv`
             a.click()
             URL.revokeObjectURL(url)
             setDownloading(false)
@@ -159,8 +169,7 @@ export function ExportModal({ cities, serviceGroups, onClose }: {
                 showConfirmButton: false,
             })
             onClose()
-
-        } catch {        // ← ตรงนี้ปิด try ทั้งหมด
+        } catch {
             await Swal.fire({
                 title: 'เกิดข้อผิดพลาด',
                 text: 'ไม่สามารถเชื่อมต่อได้ กรุณาลองใหม่',
@@ -170,11 +179,13 @@ export function ExportModal({ cities, serviceGroups, onClose }: {
             setDownloading(false)
         }
     }
-
-    const groups = ['ข้อมูลหลัก', 'Contact']
+    const groups = ['ข้อมูลหลัก', 'Contact', 'Deal']
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
+        <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+        >
             <div className="flex max-h-[92vh] w-full flex-col rounded-t-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-white/10 dark:bg-slate-900 sm:max-h-[90vh] sm:w-[560px] sm:rounded-2xl">
 
                 {/* Header */}
@@ -183,7 +194,19 @@ export function ExportModal({ cities, serviceGroups, onClose }: {
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className="text-base font-bold text-slate-900 dark:text-white">Export CSV</h2>
-                            <p className="mt-0.5 text-xs text-slate-400">เลือกข้อมูลและ columns ที่ต้องการดาวน์โหลด</p>
+                            <div className="mt-1 flex items-center gap-1.5">
+                                {country !== 'ALL' && (
+                                    <img
+                                        src={`https://flagcdn.com/24x18/${COUNTRY_LABELS[country]?.flag}.png`}
+                                        alt={country}
+                                        className="h-3.5 w-auto rounded-sm"
+                                    />
+                                )}
+                                <p className="text-xs text-slate-400">
+                                    {country === 'ALL' ? '🌏 All Countries' : COUNTRY_LABELS[country]?.name ?? country}
+                                    {' '}— เลือกข้อมูลและ columns ที่ต้องการดาวน์โหลด
+                                </p>
+                            </div>
                         </div>
                         <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10">✕</button>
                     </div>
