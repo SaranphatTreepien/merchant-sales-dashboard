@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
   const hasBooking = searchParams.get("hasBooking");
   const noted = searchParams.get("noted");
   const country = searchParams.get("country");
+  const saleId = searchParams.get("saleId");
   // Pagination (ไม่ใช้ตอน export)
   const page = parseInt(searchParams.get("page") || "1");
   const limit = 20;
@@ -394,24 +395,26 @@ export async function GET(req: NextRequest) {
       conditions.push(
         `NOT EXISTS (SELECT 1 FROM place_notes n2 WHERE n2.place_id = p.place_id)`,
       );
+    if (saleId) {
+      conditions.push(
+     `EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id AND dc2.sale_id = $${i++}::uuid)`,
+      );
+      values.push(saleId);
+    }
     const where = conditions.join(" AND ");
 
     // ── Main SELECT ──────────────────────────────────────────────────────────
-    const paginationClause = isExport ? "" : `LIMIT ${limit} OFFSET ${offset}`;
+    const paginationClause = isExport
+      ? ""
+      : `LIMIT ${limit + 1} OFFSET ${offset}`;
 
     const { rows } = await pool.query(
       `
-   WITH filtered AS (
-    SELECT p.place_id, p.scraped_at,
-      p.last_activity_at,
-      COUNT(*) OVER() AS total_count
+  WITH ranked AS (
+    SELECT p.place_id, p.scraped_at, p.last_activity_at
     FROM places p
     WHERE ${where}
-  ),
-  ranked AS (
-    SELECT *
-    FROM filtered
-    ORDER BY last_activity_at DESC NULLS LAST, scraped_at DESC
+    ORDER BY p.last_activity_at DESC NULLS LAST, p.scraped_at DESC
     ${paginationClause}
   )
   SELECT
@@ -434,8 +437,7 @@ export async function GET(req: NextRequest) {
     ln.author AS last_note_by,
     ln.created_at AS last_note_at,
     COALESCE(pr.cnt, 0) AS pending_requests,
-    ranked.last_activity_at,
-    ranked.total_count
+    ranked.last_activity_at
   FROM ranked
   JOIN places p ON p.place_id = ranked.place_id
   LEFT JOIN place_phones ph ON ph.place_id = p.place_id AND ph.deleted_at IS NULL
@@ -471,13 +473,30 @@ export async function GET(req: NextRequest) {
     p.has_booking, p.scraped_at, p.country,
     deal.status, deal.reference_code, deal.updated_at, deal.sale_name,
     ln.note, ln.created_at, ln.author,
-    pr.cnt, ranked.last_activity_at, ranked.total_count
+    pr.cnt, ranked.last_activity_at
   ORDER BY ranked.last_activity_at DESC NULLS LAST, p.scraped_at DESC
-`,
+  `,
       values,
     );
 
     // ── Count — ดึงจาก window function แทน query แยก ──────────────────────
+    // AFTER
+    if (isExport) {
+      console.log("[dashboard] export rows:", rows.length);
+      return NextResponse.json({
+        data: rows,
+        total: rows.length,
+        page: 1,
+        limit: rows.length,
+      });
+    }
+
+    // ตรวจว่ามีหน้าถัดไปไหม — ดึง limit+1 แล้วเช็ค
+    const hasNextPage = rows.length > limit;
+    const pageData = hasNextPage ? rows.slice(0, limit) : rows;
+
+    // COUNT แยก — run parallel กับ data query ไม่ได้แล้ว แต่ทำใน Promise.all กับ stats ได้
+    // ตอนนี้ทำ COUNT แยกหลัง data query — เร็วเพราะ data query เบาลงมาก
     const hasFilter =
       (country && country !== "ALL") ||
       search ||
@@ -494,36 +513,56 @@ export async function GET(req: NextRequest) {
       hasDeal ||
       hasTiktok ||
       hasBooking ||
-      noted;
+      noted ||
+      saleId;
 
     let total: number;
-    if (isExport) {
-      total = rows.length;
-    } else if (!hasFilter) {
-      // ไม่มี filter → ใช้ reltuples (เร็ว ~1ms ไม่ต้อง scan)
+    if (!hasFilter) {
       const approxResult = await pool.query(
         `SELECT reltuples::bigint AS total FROM pg_class WHERE relname = 'places'`,
       );
       total = parseInt(approxResult.rows[0]?.total ?? "0");
     } else {
-      // มี filter → COUNT จริง (แม่นยำ)
-      total = parseInt(rows[0]?.total_count ?? "0");
+      const countResult = await pool.query(
+        `SELECT COUNT(*) AS total FROM places p WHERE ${where}`,
+        values,
+      );
+      total = parseInt(countResult.rows[0]?.total ?? "0");
     }
+
     console.log(
       "[dashboard] rows:",
-      rows.length,
+      pageData.length,
       "total:",
       total,
+      "hasNext:",
+      hasNextPage,
       "country:",
       country,
     );
+
     return NextResponse.json({
-      data: rows,
+      data: pageData,
       total,
-      page: isExport ? 1 : page,
-      limit: isExport ? total : limit,
+      hasNextPage,
+      page,
+      limit,
     });
-  } catch (err) {
+  } catch (err: unknown) {
+    const isConnRefused =
+      err !== null &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code: string }).code === "ECONNREFUSED";
+
+    if (isConnRefused) {
+      console.error("[api/dashboard] DB unreachable (ECONNREFUSED)");
+      return NextResponse.json(
+        { error: "DB_UNREACHABLE", message: "ไม่สามารถเชื่อมต่อ Database ได้" },
+        { status: 503 },
+      );
+    }
+
     console.error("[api/dashboard] error:", err);
     return NextResponse.json({ error: "DB error" }, { status: 500 });
   }

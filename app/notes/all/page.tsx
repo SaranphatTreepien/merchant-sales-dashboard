@@ -163,7 +163,7 @@ export default function NotesAllPage() {
                 </button>
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
-                        🗂️ Note History 
+                        🗂️ Note History
                     </h1>
                     <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
                         โหมดอ่านอย่างเดียว · แสดงบันทึกข้อมูลทั้งหมดของทีมงาน
@@ -174,10 +174,10 @@ export default function NotesAllPage() {
             {/* Filter Bar */}
             <form
                 onSubmit={handleSearch}
-                className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+                className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5"
             >
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-wrap xl:items-end">
-                    
+
                     <div className="flex flex-col gap-1.5 xl:w-44">
                         <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">จากวันที่</label>
                         <input
@@ -198,23 +198,21 @@ export default function NotesAllPage() {
                         />
                     </div>
 
-                    {currentUser?.role === 'admin' && (
-                        <div className="flex flex-col gap-1.5 xl:w-52">
-                            <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">พนักงานขาย (Sale)</label>
-                            <select
-                                className={inputClassName}
-                                value={saleId}
-                                onChange={(e) => { setSaleId(e.target.value); setPage(1); setTimeout(() => fetchNotes(1), 0) }}
-                            >
-                                <option value="">ทุก Sale</option>
-                                {sales.map((s) => (
-                                    <option key={s.id} value={s.id}>
-                                        {s.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
+                    <div className="flex flex-col gap-1.5 xl:w-52">
+                        <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">พนักงานขาย (SALE)</label>
+                        <select
+                            className={inputClassName}
+                            value={saleId}
+                            onChange={(e) => { setSaleId(e.target.value); setPage(1); setTimeout(() => fetchNotes(1), 0) }}
+                        >
+                            <option value="">ทุก Sale</option>
+                            {sales.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
                     <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-1 xl:flex-1 xl:min-w-[260px]">
                         <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">ค้นหา</label>
@@ -275,10 +273,10 @@ export default function NotesAllPage() {
                     {Object.values(grouped).map((group) => (
                         <div
                             key={group.place_id}
-                            className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-slate-700/80 dark:bg-slate-800"
+                            className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#13161e]"
                         >
                             {/* Place Header */}
-                            <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/70 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700 dark:bg-slate-800/50">
+                            <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/70 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-white/5 dark:bg-white/[0.03]">
                                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                                     <span className="text-base">🏪</span>
                                     <button
@@ -297,7 +295,7 @@ export default function NotesAllPage() {
                             </div>
 
                             {/* Timeline List */}
-                            <div className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                            <div className="divide-y divide-gray-100 dark:divide-white/5">
                                 {(() => {
                                     const latestUpdatedAt = group.notes.length > 1
                                         ? [...group.notes].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]?.updated_at
@@ -307,7 +305,7 @@ export default function NotesAllPage() {
                                         const isLatestEdited = !!latestUpdatedAt && n.updated_at === latestUpdatedAt
                                         return (
                                             <div key={n.id} className="group flex gap-4 px-5 py-4.5 hover:bg-gray-50/50 dark:hover:bg-slate-700/20 transition-colors">
-                                                
+
                                                 {/* Line & Dot Indicator */}
                                                 <div className="flex flex-col items-center shrink-0 pt-0.5">
                                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm ring-4 ring-white dark:ring-slate-800 ${avatarColor(n.sale_name)}`}>
@@ -327,7 +325,7 @@ export default function NotesAllPage() {
                                                         <span className="text-xs text-gray-400 dark:text-slate-500">
                                                             • {formatDate(n.created_at)}
                                                         </span>
-                                                        
+
                                                         {isLatestEdited && (
                                                             <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200/40 dark:border-amber-500/20">
                                                                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>

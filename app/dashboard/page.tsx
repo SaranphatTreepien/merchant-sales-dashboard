@@ -42,8 +42,8 @@ type Filters = {
   hasBooking: 'yes' | 'no' | ''; noted: 'yes' | 'no' | ''
   hasDeal: 'yes' | 'no' | 'pending' | 'success' | 'stop' | ''
   hasTiktok: boolean
+  saleId: string
 }
-
 const DEFAULT_FILTERS: Filters = {
   search: '', city: '', serviceType: '', status: '',
   hasLine: false, hasFb: false, hasIg: false,
@@ -52,6 +52,7 @@ const DEFAULT_FILTERS: Filters = {
   hasBooking: '', noted: '',
   hasDeal: '',
   hasTiktok: false,
+  saleId: '',
 }
 const PAGE_SIZE = 20
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -111,13 +112,22 @@ function ContactBadges({ place }: { place: Place }) {
   if (badges.length === 0)
     return <span className="text-slate-300 dark:text-slate-700 text-xs">—</span>
 
+  const MAX_VISIBLE = 4
+  const visible = badges.slice(0, MAX_VISIBLE)
+  const overflow = badges.length - MAX_VISIBLE
+
   return (
-    <div className="flex max-h-[56px] flex-wrap gap-1 overflow-hidden">
-      {badges.map(b => (
+    <div className="flex flex-wrap gap-1">
+      {visible.map(b => (
         <span key={b.label} className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap shadow-2xs ${b.cls}`}>
           {b.label}
         </span>
       ))}
+      {overflow > 0 && (
+        <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap bg-slate-100 text-slate-500 border-slate-200 dark:bg-white/5 dark:text-slate-400 dark:border-white/10">
+          +{overflow}
+        </span>
+      )}
     </div>
   )
 }
@@ -129,6 +139,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const [data, setData] = useState<Place[]>([])
   const [total, setTotal] = useState(0)
+  const [hasNextPage, setHasNextPage] = useState(false)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
@@ -141,6 +152,7 @@ export default function DashboardPage() {
   const [showCountryDropdown, setShowCountryDropdown] = useState(false)
   const [countries, setCountries] = useState<{ code: string; name: string; flag: string; total: number }[]>([])
   const [showFilters, setShowFilters] = useState(true)
+  const [sales, setSales] = useState<{ id: string; name: string }[]>([])
 
   const isMounted = useRef(false)
   const filtersRef = useRef(filters)
@@ -157,6 +169,7 @@ export default function DashboardPage() {
     countryFlag: '',
     noted: 0, pending: 0, success: 0, stop: 0
   })
+  const [dbError, setDbError] = useState<'DB_UNREACHABLE' | 'UNKNOWN' | null>(null)
   const [copiedRefCode, setCopiedRefCode] = useState<string | null>(null)
 
   const copyRefCode = (e: React.MouseEvent, code: string) => {
@@ -170,14 +183,23 @@ export default function DashboardPage() {
   // Effect หลัก — โหลดครั้งแรก + เปลี่ยน country
   // Effect หลัก — โหลดครั้งแรก + เปลี่ยน country
   useEffect(() => {
-    fetch(`/api/filters?country=${selectedCountry}`).then(r => r.json()).then(json => {
-      setCities(json.cities || [])
-      setServiceGroups(json.serviceGroups || [])
-      setCountries(json.countries || [])
-    })
+    fetch(`/api/filters?country=${selectedCountry}`)
+      .then(r => {
+        if (!r.ok) return null
+        return r.json()
+      })
+      .then(json => {
+        if (!json) return
+        setCities(json.cities || [])
+        setServiceGroups(json.serviceGroups || [])
+        setCountries(json.countries || [])
+        setSales(json.sales || [])
+      })
+      .catch(() => {
+        // filters โหลดไม่ได้ — ปล่อย empty ไว้ fetchData จัดการ dbError เอง
+      })
     setPage(1)
     fetchData(1)
-    // set หลัง fetchData เพื่อให้ effects อื่น skip ตอน mount
     setTimeout(() => { isMounted.current = true }, 50)
   }, [selectedCountry])
 
@@ -198,7 +220,8 @@ export default function DashboardPage() {
     filters.hasEmail, filters.hasPhone,
     filters.hasWhatsapp, filters.hasTelegram,
     filters.hasBooking, filters.noted,
-    filters.hasDeal, filters.hasTiktok
+    filters.hasDeal, filters.hasTiktok,
+    filters.saleId
   ])
 
   // Pagination — skip ตอน mount
@@ -233,30 +256,53 @@ export default function DashboardPage() {
     if (f.hasBooking === 'no') params.set('hasBooking', 'no')
     if (f.noted === 'yes') params.set('noted', 'yes')
     if (f.noted === 'no') params.set('noted', 'no')
+    if (f.saleId) params.set('saleId', f.saleId)
     if (!all) params.set('page', String(p))
     else params.set('export', '1')
     return params
   }
 
   // fetchData — stable reference ไม่มี dependency เลย
+  // AFTER
   const fetchData = useCallback(async (p?: number) => {
     const currentPage = p ?? pageRef.current
     const country = selectedCountryRef.current
-    console.log('[fetchData] called', { p, currentPage, country, stack: new Error().stack?.split('\n')[2] })
     setLoading(true)
-    const [statsRes, res] = await Promise.all([
-      fetch(`/api/dashboard/stats?country=${country}`),
-      fetch(`/api/dashboard?${buildParams(currentPage)}`),
-    ])
-    const [statsJson, json] = await Promise.all([
-      statsRes.json(),
-      res.json(),
-    ])
-    setData(json.data || [])
-    setTotal(json.total || 0)
-    setStats(statsJson)
-    setLoading(false)
-  }, []) // ← dependency array ว่าง — reference ไม่เปลี่ยนอีกแล้ว
+    setDbError(null)
+
+    try {
+      const [statsRes, res] = await Promise.all([
+        fetch(`/api/dashboard/stats?country=${country}`),
+        fetch(`/api/dashboard?${buildParams(currentPage)}`),
+      ])
+
+      // AFTER
+      if (res.status === 503 || statsRes.status === 503) {
+        const json = await res.json().catch(() => ({}))
+        setDbError(json.error === 'DB_UNREACHABLE' ? 'DB_UNREACHABLE' : 'UNKNOWN')
+        setData([])
+        setTotal(0)
+        setStats({ countryCode: '', countryName: '', countryFlag: '', noted: 0, pending: 0, success: 0, stop: 0 })
+        setLoading(false)
+        return
+      }
+
+      const [statsJson, json] = await Promise.all([
+        statsRes.json(),
+        res.json(),
+      ])
+      console.log('phone_count sample:', json.data?.[0]?.phone_count, typeof json.data?.[0]?.phone_count)
+      setData(json.data || [])
+      setTotal(json.total || 0)
+      setHasNextPage(json.hasNextPage ?? false)
+      setStats(statsJson)
+      setDbError(null)
+    } catch {
+      setDbError('UNKNOWN')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   const handleSearch = () => { setPage(1); fetchData(1) }
   const [copiedPlaceId, setCopiedPlaceId] = useState<string | null>(null)
@@ -395,7 +441,7 @@ export default function DashboardPage() {
                         >
                           <span className={`fi fi-${c.flag}`} style={{ width: '1.25rem', height: '0.875rem', borderRadius: '2px', flexShrink: 0 }} />
                           <span>{c.name}</span>
-                          <span className="ml-auto text-xs text-slate-400">{c.total.toLocaleString()}</span>
+                          <span className="ml-auto text-xs text-slate-400">{(c.total ?? 0).toLocaleString()}</span>
                         </button>
                       ))}
                     </div>
@@ -433,116 +479,142 @@ export default function DashboardPage() {
         </div>
 
         {/* Card 2 — 4 Stat Cards */}
-   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
-  {/* Noted */}
-  <div className="group relative overflow-hidden rounded-2xl border border-slate-300/70 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/15 dark:from-slate-900 dark:to-slate-900/80">
+          {/* Noted */}
+          <div className="group relative overflow-hidden rounded-2xl border border-slate-300/70 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/15 dark:from-slate-900 dark:to-slate-900/80">
 
-    <div className="absolute inset-x-0 top-0 h-1 bg-emerald-500" />
+            <div className="absolute inset-x-0 top-0 h-1 bg-emerald-500" />
 
-    <div className="flex items-start justify-between">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Noted
-        </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                  Noted
+                </p>
 
-        <p className="mt-2 text-3xl font-black tabular-nums text-emerald-500 dark:text-emerald-400">
-          {stats.noted?.toLocaleString() ?? '0'}
-        </p>
+                <p className="mt-2 text-3xl font-black tabular-nums text-emerald-500 dark:text-emerald-400">
+                  {stats.noted?.toLocaleString() ?? '0'}
+                </p>
 
-        <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">
-          ร้านที่มี note
-        </p>
+                <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                  ร้านที่มี note
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-500">
+                📝
+              </div>
+            </div>
+          </div>
+
+          {/* Success */}
+          <div className="group relative overflow-hidden rounded-2xl border border-slate-300/70 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/15 dark:from-slate-900 dark:to-slate-900/80">
+
+            <div className="absolute inset-x-0 top-0 h-1 bg-[#40BEB6]" />
+
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                  Deal Success
+                </p>
+
+                <p className="mt-2 text-3xl font-black tabular-nums text-[#40BEB6]">
+                  {stats.success?.toLocaleString() ?? '0'}
+                </p>
+
+                <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                  ปิดดีลแล้ว
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-[#40BEB6]/10 p-2 text-[#40BEB6]">
+                ✅
+              </div>
+            </div>
+          </div>
+
+          {/* Progress */}
+          <div className="group relative overflow-hidden rounded-2xl border border-slate-300/70 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/15 dark:from-slate-900 dark:to-slate-900/80">
+
+            <div className="absolute inset-x-0 top-0 h-1 bg-blue-500" />
+
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                  Deal Progress
+                </p>
+
+                <p className="mt-2 text-3xl font-black tabular-nums text-blue-500 dark:text-blue-400">
+                  {stats.pending?.toLocaleString() ?? '0'}
+                </p>
+
+                <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                  กำลังดำเนินการ
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-blue-500/10 p-2 text-blue-500">
+                ⏳
+              </div>
+            </div>
+          </div>
+
+          {/* Stop */}
+          <div className="group relative overflow-hidden rounded-2xl border border-slate-300/70 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/15 dark:from-slate-900 dark:to-slate-900/80">
+
+            <div className="absolute inset-x-0 top-0 h-1 bg-red-500" />
+
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                  Deal Stop
+                </p>
+
+                <p className="mt-2 text-3xl font-black tabular-nums text-red-500 dark:text-red-400">
+                  {stats.stop?.toLocaleString() ?? '0'}
+                </p>
+
+                <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                  ยุติการติดต่อ
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-red-500/10 p-2 text-red-500">
+                ❌
+              </div>
+            </div>
+          </div>
+
+        </div>
+
       </div>
-
-      <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-500">
-        📝
-      </div>
-    </div>
-  </div>
-
-  {/* Success */}
-  <div className="group relative overflow-hidden rounded-2xl border border-slate-300/70 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/15 dark:from-slate-900 dark:to-slate-900/80">
-
-    <div className="absolute inset-x-0 top-0 h-1 bg-[#40BEB6]" />
-
-    <div className="flex items-start justify-between">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Deal Success
-        </p>
-
-        <p className="mt-2 text-3xl font-black tabular-nums text-[#40BEB6]">
-          {stats.success?.toLocaleString() ?? '0'}
-        </p>
-
-        <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">
-          ปิดดีลแล้ว
-        </p>
-      </div>
-
-      <div className="rounded-xl bg-[#40BEB6]/10 p-2 text-[#40BEB6]">
-        ✅
-      </div>
-    </div>
-  </div>
-
-  {/* Progress */}
-  <div className="group relative overflow-hidden rounded-2xl border border-slate-300/70 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/15 dark:from-slate-900 dark:to-slate-900/80">
-
-    <div className="absolute inset-x-0 top-0 h-1 bg-blue-500" />
-
-    <div className="flex items-start justify-between">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Deal Progress
-        </p>
-
-        <p className="mt-2 text-3xl font-black tabular-nums text-blue-500 dark:text-blue-400">
-          {stats.pending?.toLocaleString() ?? '0'}
-        </p>
-
-        <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">
-          กำลังดำเนินการ
-        </p>
-      </div>
-
-      <div className="rounded-xl bg-blue-500/10 p-2 text-blue-500">
-        ⏳
-      </div>
-    </div>
-  </div>
-
-  {/* Stop */}
-  <div className="group relative overflow-hidden rounded-2xl border border-slate-300/70 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/15 dark:from-slate-900 dark:to-slate-900/80">
-
-    <div className="absolute inset-x-0 top-0 h-1 bg-red-500" />
-
-    <div className="flex items-start justify-between">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Deal Stop
-        </p>
-
-        <p className="mt-2 text-3xl font-black tabular-nums text-red-500 dark:text-red-400">
-          {stats.stop?.toLocaleString() ?? '0'}
-        </p>
-
-        <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">
-          ยุติการติดต่อ
-        </p>
-      </div>
-
-      <div className="rounded-xl bg-red-500/10 p-2 text-red-500">
-        ❌
-      </div>
-    </div>
-  </div>
-
-</div>
-
-      </div>
-
+      {dbError && (
+        <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 dark:border-red-500/20 dark:bg-red-500/10">
+          <div className="flex items-start gap-3">
+            <span className="text-xl">🔌</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-red-700 dark:text-red-400">
+                {dbError === 'DB_UNREACHABLE'
+                  ? 'เชื่อมต่อ Database ไม่ได้'
+                  : 'เกิดข้อผิดพลาดที่ไม่คาดคิด'}
+              </p>
+              {dbError === 'DB_UNREACHABLE' && (
+                <ul className="mt-2 space-y-1 text-xs text-red-600 dark:text-red-400/80">
+                  <li>• ลืมเปิด Docker หรือเปล่า? → <code className="font-mono bg-red-100 dark:bg-red-500/20 px-1 rounded">docker start merchant_db</code></li>
+                  <li>• เช็ค port 5432 ว่า bind อยู่ไหม → <code className="font-mono bg-red-100 dark:bg-red-500/20 px-1 rounded">docker ps</code></li>
+                  <li>• เช็ค <code className="font-mono bg-red-100 dark:bg-red-500/20 px-1 rounded">.env.local</code> → <code className="font-mono bg-red-100 dark:bg-red-500/20 px-1 rounded">DB_HOST</code> ตรงไหม</li>
+                </ul>
+              )}
+            </div>
+            <button
+              onClick={() => fetchData(page)}
+              className="shrink-0 rounded-xl border border-red-300 bg-white px-3 py-1.5 text-xs font-bold text-red-600 transition-all hover:bg-red-50 dark:border-red-500/30 dark:bg-transparent dark:text-red-400 dark:hover:bg-red-500/10"
+            >
+              🔄 ลองใหม่
+            </button>
+          </div>
+        </div>
+      )}
       {/* ── Filter Bar ── */}
       <div className="mb-5 space-y-4 rounded-2xl border border-slate-300 bg-white p-3 dark:border-white/25 dark:bg-slate-900/80 sm:mb-6 sm:p-5">
 
@@ -656,6 +728,25 @@ export default function DashboardPage() {
                   <option value="no">❌ ไม่มี Note</option>
                 </select>
                 <span className={`absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none ${filters.noted !== '' ? 'text-[#40BEB6]' : 'text-slate-400'}`}>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                </span>
+              </div>
+              <div className="relative min-w-0 group">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 text-xs">👤</span>
+                <select
+                  className={`h-11 w-full appearance-none rounded-xl border bg-white dark:bg-slate-900 pl-8 pr-9 py-2 text-xs font-semibold outline-none transition-all duration-200 cursor-pointer ${filters.saleId !== ''
+                    ? 'border-[#40BEB6] text-[#40BEB6] ring-4 ring-[#40BEB6]/10 bg-[#40BEB6]/5'
+                    : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20'
+                    }`}
+                  value={filters.saleId}
+                  onChange={e => setFilters(f => ({ ...f, saleId: e.target.value }))}
+                >
+                  <option value="">Deal by Sale: ทั้งหมด</option>
+                  {serviceGroups && (sales as { id: string; name: string }[]).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <span className={`absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none ${filters.saleId !== '' ? 'text-[#40BEB6]' : 'text-slate-400'}`}>
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                 </span>
               </div>
@@ -809,104 +900,191 @@ export default function DashboardPage() {
               )}
             </div>
 
-   <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-white/10">
+            <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-white/10">
 
-  {/* Deal Status Section */}
-  {(place.deal_status ||
-    place.deal_reference_code ||
-    (place.last_activity_at &&
-      new Date(place.last_activity_at).toDateString() ===
-        new Date().toDateString())) && (
-    <div className="mb-4 flex flex-wrap items-center gap-2">
+              {/* Deal Status Section */}
+              {(place.deal_status ||
+                place.deal_reference_code ||
+                (place.last_activity_at &&
+                  new Date(place.last_activity_at).toDateString() ===
+                  new Date().toDateString())) && (
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
 
-      {/* REF CODE */}
-      {place.deal_reference_code && (
-        <button
-          type="button"
-          onClick={e => copyRefCode(e, place.deal_reference_code!)}
-          className="group inline-flex items-center gap-1.5 rounded-lg border border-slate-300/80 bg-slate-100/80 px-2.5 py-1 font-mono text-[10px] font-semibold text-slate-700 transition-all hover:border-[#40BEB6]/40 hover:bg-[#40BEB6]/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
-        >
-          <span className="truncate max-w-[110px]">
-            🏷 {place.deal_reference_code}
-          </span>
+                    {/* REF CODE */}
+                    {place.deal_reference_code && (
+                      <button
+                        type="button"
+                        onClick={e => copyRefCode(e, place.deal_reference_code!)}
+                        className="group inline-flex items-center gap-1.5 rounded-lg border border-slate-300/80 bg-slate-100/80 px-2.5 py-1 font-mono text-[10px] font-semibold text-slate-700 transition-all hover:border-[#40BEB6]/40 hover:bg-[#40BEB6]/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
+                      >
+                        <span className="truncate max-w-[110px]">
+                          🏷 {place.deal_reference_code}
+                        </span>
 
-          <span className="text-[9px] text-slate-400 transition-colors group-hover:text-[#40BEB6]">
-            {copiedRefCode === place.deal_reference_code ? '✓' : '⎘'}
-          </span>
-        </button>
-      )}
+                        <span className="text-[9px] text-slate-400 transition-colors group-hover:text-[#40BEB6]">
+                          {copiedRefCode === place.deal_reference_code ? '✓' : '⎘'}
+                        </span>
+                      </button>
+                    )}
 
-      {/* STATUS */}
-      {place.deal_status === 'success' && (
-        <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/15 px-3 py-1 text-[11px] font-bold text-emerald-500 dark:text-emerald-400">
-          ✅ Deal Success
-        </span>
-      )}
+                    {/* STATUS */}
+                    {place.deal_status === 'success' && (
+                      <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/15 px-3 py-1 text-[11px] font-bold text-emerald-500 dark:text-emerald-400">
+                        ✅ Deal Success
+                      </span>
+                    )}
 
-      {place.deal_status === 'pending' && (
-        <span className="inline-flex items-center rounded-full border border-blue-400/30 bg-blue-500/15 px-3 py-1 text-[11px] font-bold text-blue-500 dark:text-blue-400">
-          🔵 In Progress
-        </span>
-      )}
+                    {place.deal_status === 'pending' && (
+                      <span className="inline-flex items-center rounded-full border border-blue-400/30 bg-blue-500/15 px-3 py-1 text-[11px] font-bold text-blue-500 dark:text-blue-400">
+                        🔵 In Progress
+                      </span>
+                    )}
 
-      {place.deal_status === 'stop' && (
-        <span className="inline-flex items-center rounded-full border border-red-400/30 bg-red-500/15 px-3 py-1 text-[11px] font-bold text-red-500 dark:text-red-400">
-          🔴 Stop
-        </span>
-      )}
+                    {place.deal_status === 'stop' && (
+                      <span className="inline-flex items-center rounded-full border border-red-400/30 bg-red-500/15 px-3 py-1 text-[11px] font-bold text-red-500 dark:text-red-400">
+                        🔴 Stop
+                      </span>
+                    )}
 
-      {/* DATE */}
-      {place.deal_updated_at && (
-        <span className="text-[10px] text-slate-400">
-          {formatDate(place.deal_updated_at)}
-        </span>
-      )}
-    </div>
-  )}
+                    {/* DATE */}
+                    {place.deal_updated_at && (
+                      <span className="text-[10px] text-slate-400">
+                        {formatDate(place.deal_updated_at)}
+                      </span>
+                    )}
+                  </div>
+                )}
 
-  {/* NOTE SECTION */}
-  <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 dark:border-white/10 dark:bg-white/[0.03]">
+              {/* NOTE SECTION */}
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 dark:border-white/10 dark:bg-white/[0.03]">
 
-    <div className="flex gap-3">
+                <div className="flex gap-3">
 
-      {/* Accent */}
-      <div className="w-1 shrink-0 rounded-full bg-[#40BEB6]" />
+                  {/* Accent */}
+                  <div className="w-1 shrink-0 rounded-full bg-[#40BEB6]" />
 
-      <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1">
 
-        {/* NOTE */}
-        <p className="text-[13px] leading-6 text-slate-800 dark:text-slate-100 font-medium break-words">
-          {place.last_note || 'ยังไม่มี note ล่าสุด'}
-        </p>
+                    {/* NOTE */}
+                    <p className="text-[13px] leading-6 text-slate-800 dark:text-slate-100 font-medium break-words">
+                      {place.last_note || 'ยังไม่มี note ล่าสุด'}
+                    </p>
 
-        {/* FOOTER */}
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    {/* FOOTER */}
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 
-          <span className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-            {place.last_note_by
-              ? `${place.last_note_by} · ${formatDate(place.last_note_at)}`
-              : 'No recent action'}
-          </span>
+                      <span className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                        {place.last_note_by
+                          ? `${place.last_note_by} · ${formatDate(place.last_note_at)}`
+                          : 'No recent action'}
+                      </span>
 
-          {place.google_map_url && (
-            <a
-              href={place.google_map_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="inline-flex w-fit items-center rounded-full border border-red-300/40 bg-red-500/10 px-3 py-1 text-[11px] font-semibold text-red-500 transition-all hover:bg-red-500/20 dark:border-red-400/20 dark:text-red-400"
-            >
-              📍 Google Maps
-            </a>
-          )}
+                      {place.google_map_url && (
+                        <a
+                          href={place.google_map_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="inline-flex w-fit items-center rounded-full border border-red-300/40 bg-red-500/10 px-3 py-1 text-[11px] font-semibold text-red-500 transition-all hover:bg-red-500/20 dark:border-red-400/20 dark:text-red-400"
+                        >
+                          📍 Google Maps
+                        </a>
+                      )}
 
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         ))}
+      </div>
+      {/* ── Pagination ── */}
+      <div className="mb-3  flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Left — info */}
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+          {loading
+            ? 'กำลังโหลด...'
+            : `${((page - 1) * PAGE_SIZE) + 1}–${((page - 1) * PAGE_SIZE) + data.length} จาก ${total.toLocaleString()} รายการ`
+          }
+        </span>
+
+        {/* Right — pagination */}
+        <div className="flex flex-wrap items-center gap-2">
+
+          {/* ← ก่อนหน้า */}
+          <button
+            onClick={() => setPage(p => p - 1)}
+            disabled={loading || page === 1}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors disabled:cursor-not-allowed disabled:opacity-30 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10"
+          >
+            ← ก่อนหน้า
+          </button>
+
+          {/* Page buttons — แสดงแค่ desktop */}
+          <div className="hidden items-center gap-1 sm:flex">
+            {(() => {
+              const totalPages = total > 0 ? Math.ceil(total / PAGE_SIZE) : 1
+              const delta = 2
+              const pages: (number | 'ellipsis')[] = []
+              const left = Math.max(2, page - delta)
+              const right = Math.min(totalPages - 1, page + delta)
+
+              pages.push(1)
+              if (left > 2) pages.push('ellipsis')
+              for (let i = left; i <= right; i++) pages.push(i)
+              if (right < totalPages - 1) pages.push('ellipsis')
+              if (totalPages > 1) pages.push(totalPages)
+
+              return pages.map((p, idx) =>
+                p === 'ellipsis' ? (
+                  <span key={`ellipsis-${idx}`} className="px-1 text-xs text-slate-400">...</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    disabled={loading}
+                    className={`min-w-[32px] rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed ${p === page
+                      ? 'border-[#40BEB6] bg-[#40BEB6] text-white shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-[#40BEB6]/40 hover:text-[#40BEB6] dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:border-[#40BEB6]/30 dark:hover:text-teal-400'
+                      }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )
+            })()}
+          </div>
+
+          {/* Go to page input */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-400 dark:text-slate-500">ไปหน้า</span>
+            <input
+              type="number"
+              min={1}
+              max={total > 0 ? Math.ceil(total / PAGE_SIZE) : 1}
+              defaultValue={page}
+              key={page}
+              onKeyDown={e => {
+                if (e.key !== 'Enter') return
+                const val = parseInt((e.target as HTMLInputElement).value)
+                const totalPages = total > 0 ? Math.ceil(total / PAGE_SIZE) : 1
+                if (!isNaN(val) && val >= 1 && val <= totalPages) setPage(val)
+              }}
+              className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs font-semibold text-slate-700 outline-none transition-all focus:border-[#40BEB6] focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-white/10 dark:bg-white/5 dark:text-white dark:focus:border-[#40BEB6]"
+            />
+          </div>
+
+          {/* ถัดไป → */}
+          <button
+            onClick={() => setPage(p => p + 1)}
+            disabled={loading || !hasNextPage}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors disabled:cursor-not-allowed disabled:opacity-30 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10"
+          >
+            ถัดไป →
+          </button>
+
+        </div>
       </div>
 
       {/* ── Table Desktop ── */}
@@ -1134,31 +1312,7 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
-      {/* ── Pagination ── */}
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" >
-        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-          {loading ? 'กำลังโหลด...' : `${((page - 1) * PAGE_SIZE) + 1}–${Math.min(page * PAGE_SIZE, total)} จาก ${total.toLocaleString()} รายการ`}
-        </span>
-        <div className="flex items-center justify-between gap-2 sm:justify-start">
-          <button
-            onClick={() => setPage(p => p - 1)}
-            disabled={loading || page === 1}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors disabled:cursor-not-allowed disabled:opacity-30 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10 sm:px-3.5"
-          >
-            ← ก่อนหน้า
-          </button>
-          <span className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold tabular-nums text-slate-600 shadow-2xs dark:border-white/10 dark:bg-white/5 dark:text-white sm:px-3.5">
-            {page} / {loading ? '...' : totalPages}
-          </span>
-          <button
-            onClick={() => setPage(p => p + 1)}
-            disabled={loading || page >= totalPages}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors disabled:cursor-not-allowed disabled:opacity-30 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10 sm:px-3.5"
-          >
-            ถัดไป →
-          </button>
-        </div>
-      </div >
+
 
       {/* ── Export Modal ── */}
       {

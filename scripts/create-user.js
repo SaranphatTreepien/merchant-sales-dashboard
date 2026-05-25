@@ -26,11 +26,12 @@ if (!name || !email || !role || !password) {
   process.exit(1)
 }
 
-if (!['admin', 'sale'].includes(role)) {
-  console.error('role ต้องเป็น admin หรือ sale เท่านั้น')
+
+if (role !== 'sale') {
+  console.error('❌ script นี้สร้างได้เฉพาะ role: sale เท่านั้น')
+  console.error('   หากต้องการสร้าง admin ให้แก้ตรง DB โดยตรง')
   process.exit(1)
 }
-
 const pool = new Pool({
   host: process.env.PG_HOST || 'localhost',
   port: parseInt(process.env.PG_PORT || '5432'),

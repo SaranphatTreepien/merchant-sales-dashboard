@@ -213,3 +213,82 @@ CMS ใส่แค่ปุ่ม → link มา URL Dashboard
 "ให้ sale ไป login เองอีกรอบ ได้ ไม่ต้องนั่งไล่ flow กับ pass auth token"
 Sale กดมาจาก CMS → เจอหน้า Login → กรอก credential เอง
 CMS admin ใช้งานเอง ไม่ต้องอำนวยความสะดวกเยอะ
+
+
+
+PS C:\Users\Saranphat> docker exec merchant_db psql -U postgres -d merchant_db -c "\di"
+                                       List of relations
+ Schema |                    Name                    | Type  |  Owner   |         Table
+--------+--------------------------------------------+-------+----------+-----------------------
+ public | contact_edit_logs_pkey                     | index | postgres | contact_edit_logs
+ public | contact_edit_requests_pkey                 | index | postgres | contact_edit_requests
+ public | contact_history_pkey                       | index | postgres | contact_history
+ public | contact_verifications_pkey                 | index | postgres | contact_verifications
+ public | contact_verifications_place_field_unique   | index | postgres | contact_verifications
+ public | deal_cases_pkey                            | index | postgres | deal_cases
+ public | idx_contact_edit_requests_pending          | index | postgres | contact_edit_requests
+ public | idx_contact_edit_requests_place_id_created | index | postgres | contact_edit_requests
+ public | idx_contact_history_changed_at             | index | postgres | contact_history
+ public | idx_contact_history_place_changed          | index | postgres | contact_history
+ public | idx_contact_history_place_id               | index | postgres | contact_history
+ public | idx_contact_history_record                 | index | postgres | contact_history
+ public | idx_contact_history_table                  | index | postgres | contact_history
+ public | idx_deal_cases_place_id                    | index | postgres | deal_cases
+ public | idx_deal_cases_place_id_updated            | index | postgres | deal_cases
+ public | idx_deal_cases_sale_id                     | index | postgres | deal_cases
+ public | idx_deal_cases_status                      | index | postgres | deal_cases
+ public | idx_place_emails_address                   | index | postgres | place_emails
+ public | idx_place_emails_place_id                  | index | postgres | place_emails
+ public | idx_place_facebooks_place_id               | index | postgres | place_facebooks
+ public | idx_place_instagrams_place_id              | index | postgres | place_instagrams
+ public | idx_place_lines_line_id                    | index | postgres | place_lines
+ public | idx_place_lines_place_id                   | index | postgres | place_lines
+ public | idx_place_lines_primary                    | index | postgres | place_lines
+ public | idx_place_messengers_place_id              | index | postgres | place_messengers
+ public | idx_place_notes_place_id_created           | index | postgres | place_notes
+ public | idx_place_phones_normalized                | index | postgres | place_phones
+ public | idx_place_phones_place_id                  | index | postgres | place_phones
+ public | idx_place_phones_primary                   | index | postgres | place_phones
+ public | idx_place_telegrams_place_id               | index | postgres | place_telegrams
+ public | idx_place_whatsapps_place_id               | index | postgres | place_whatsapps
+ public | idx_places_business_status                 | index | postgres | places
+ public | idx_places_city                            | index | postgres | places
+ public | idx_places_city_status                     | index | postgres | places
+ public | idx_places_country                         | index | postgres | places
+ public | idx_places_country_city                    | index | postgres | places
+ public | idx_places_last_activity                   | index | postgres | places
+ public | idx_places_place_id                        | index | postgres | places
+ public | idx_places_scraped                         | index | postgres | places
+ public | idx_places_scraped_city                    | index | postgres | places
+ public | idx_rescrape_queue_place_id                | index | postgres | rescrape_queue
+ public | idx_rescrape_queue_status                  | index | postgres | rescrape_queue
+ public | idx_scrape_logs_batch                      | index | postgres | scrape_logs
+ public | idx_scrape_logs_place_id                   | index | postgres | scrape_logs
+ public | place_emails_pkey                          | index | postgres | place_emails
+ public | place_facebooks_pkey                       | index | postgres | place_facebooks
+ public | place_instagrams_pkey                      | index | postgres | place_instagrams
+ public | place_lines_pkey                           | index | postgres | place_lines
+ public | place_lines_place_id_line_id_key           | index | postgres | place_lines
+ public | place_messengers_pkey                      | index | postgres | place_messengers
+ public | place_note_logs_pkey                       | index | postgres | place_note_logs
+ public | place_notes_pkey                           | index | postgres | place_notes
+ public | place_payment_info_pkey                    | index | postgres | place_payment_info
+ public | place_payment_info_place_id_key            | index | postgres | place_payment_info
+ public | place_phones_pkey                          | index | postgres | place_phones
+ public | place_telegrams_pkey                       | index | postgres | place_telegrams
+ public | place_whatsapps_pkey                       | index | postgres | place_whatsapps
+ public | places_pkey                                | index | postgres | places
+ public | places_place_id_key                        | index | postgres | places
+ public | rescrape_queue_pkey                        | index | postgres | rescrape_queue
+ public | scrape_logs_pkey                           | index | postgres | scrape_logs
+ public | udx_place_emails_address                   | index | postgres | place_emails
+ public | udx_place_facebooks_url                    | index | postgres | place_facebooks
+ public | udx_place_instagrams_handle                | index | postgres | place_instagrams
+ public | udx_place_lines_line_id                    | index | postgres | place_lines
+ public | udx_place_messengers_url                   | index | postgres | place_messengers
+ public | udx_place_phones_normalized                | index | postgres | place_phones
+ public | udx_place_telegrams_handle                 | index | postgres | place_telegrams
+ public | udx_place_whatsapps_number                 | index | postgres | place_whatsapps
+ public | users_email_key                            | index | postgres | users
+ public | users_pkey                                 | index | postgres | users
+(71 rows)

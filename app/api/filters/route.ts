@@ -279,37 +279,27 @@ export async function GET(req: NextRequest) {
   const country = searchParams.get("country") || "ALL"; // ← เปลี่ยน default เป็น ALL
 
   try {
-    // ── Countries ที่มีใน DB (เฉพาะที่อยู่ใน regions.ts) ─────────────────
-    const { rows: countryRows } = await pool.query(`
-      SELECT country, COUNT(*) as total
-      FROM places
-      WHERE country IS NOT NULL
-      GROUP BY country
-      ORDER BY total DESC
-    `);
+    // AFTER
+    const provincesForCountry =
+      country !== "ALL" ? getCitiesByCountry(country) : [];
 
-    const countryList = countryRows
-      .filter((r) => REGIONS[r.country])
-      .map((r) => ({
-        code: r.country,
-        name: COUNTRY_LABELS[r.country]?.name ?? r.country,
-        flag: COUNTRY_LABELS[r.country]?.flag ?? r.country.toLowerCase(),
-        total: parseInt(r.total),
-      }));
+    const [countryRows, cityRows, otherRows, salesRows] = await Promise.all([
+      pool
+        .query(
+          `
+    SELECT country, COUNT(*) as total
+    FROM places
+    WHERE country IS NOT NULL
+    GROUP BY country
+    ORDER BY total DESC
+  `,
+        )
+        .then((r) => r.rows),
 
-    const allTotal = countryList.reduce((sum, c) => sum + c.total, 0);
-    const countries = [
-      { code: "ALL", name: "All Countries", flag: "un", total: allTotal },
-      ...countryList,
-    ];
-    // ── Cities ของประเทศที่เลือก ──────────────────────────────────────────
-    let cities: string[] = [];
-
-    if (country !== "ALL") {
-      const provincesForCountry = getCitiesByCountry(country);
-
-      const { rows: cityRows } = await pool.query(
-        `
+      country !== "ALL"
+        ? pool
+            .query(
+              `
     SELECT DISTINCT
       CASE city
         WHEN 'Pattaya'       THEN 'ชลบุรี'
@@ -326,35 +316,62 @@ export async function GET(req: NextRequest) {
     FROM places
     WHERE city = ANY($1) AND country = $2
     ORDER BY city ASC
-    `,
-        [provincesForCountry, country],
-      );
+  `,
+              [provincesForCountry, country],
+            )
+            .then((r) => r.rows)
+        : Promise.resolve([]),
 
-      const { rows: otherRows } = await pool.query(
-        `
+      country !== "ALL"
+        ? pool
+            .query(
+              `
     SELECT COUNT(*) as total
     FROM places
     WHERE country = $1
       AND (city IS NULL OR city = '' OR city != ALL($2))
-    `,
-        [country, provincesForCountry],
-      );
+  `,
+              [country, provincesForCountry],
+            )
+            .then((r) => r.rows)
+        : Promise.resolve([{ total: "0" }]),
 
-      const hasOther = parseInt(otherRows[0].total) > 0;
-      cities = [
-        ...cityRows.map((r) => r.city),
-        ...(hasOther ? [OTHER_CITY] : []),
-      ];
-    }
-    const { rows: sales } = await pool.query(`
-      SELECT id, name FROM users WHERE role = 'sale' ORDER BY name ASC
-    `);
+      pool
+        .query(
+          `
+  SELECT id, name FROM users ORDER BY name ASC
+  `,
+        )
+        .then((r) => r.rows),
+    ]);
+
+    const countryList = countryRows
+      .filter((r) => REGIONS[r.country])
+      .map((r) => ({
+        code: r.country,
+        name: COUNTRY_LABELS[r.country]?.name ?? r.country,
+        flag: COUNTRY_LABELS[r.country]?.flag ?? r.country.toLowerCase(),
+        total: parseInt(r.total),
+      }));
+
+    const allTotal = countryList.reduce((sum, c) => sum + c.total, 0);
+    const countries = [
+      { code: "ALL", name: "All Countries", flag: "un", total: allTotal },
+      ...countryList,
+    ];
+
+    const hasOther = parseInt(otherRows[0]?.total ?? "0") > 0;
+    const cities =
+      country !== "ALL"
+        ? [...cityRows.map((r) => r.city), ...(hasOther ? [OTHER_CITY] : [])]
+        : [];
+
     return NextResponse.json({
       countries,
       serviceGroups: SERVICE_GROUPS,
       cities,
-      otherLabel: OTHER_CITY_LABEL, // ส่ง label ไปให้ frontend แสดงผล
-      sales: sales.map((r) => ({ id: r.id, name: r.name })),
+      otherLabel: OTHER_CITY_LABEL,
+      sales: salesRows.map((r) => ({ id: r.id, name: r.name })),
     });
   } catch (err) {
     console.error(err);

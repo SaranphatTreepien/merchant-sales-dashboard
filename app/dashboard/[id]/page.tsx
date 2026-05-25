@@ -377,7 +377,7 @@ function InputForm({ fieldType, newValue, setNewValue, fieldError, setFieldError
       <input
         className={`w-full rounded-lg border px-3 py-2 text-sm text-gray-900 outline-none transition-all mb-1 ${fieldError
           ? 'border-red-400 bg-red-50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 dark:border-red-500/50 dark:bg-red-500/10 dark:text-white'
-          : 'border-gray-200 bg-gray-50 focus:border-[#40BEB6] focus:bg-white focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:border-[#40BEB6]'
+         : 'border-gray-200 bg-gray-50 focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white dark:focus:border-[#40BEB6]'
           }`}
         inputMode={
           ['phone', 'phone2', 'whatsapp'].includes(fieldType) ? 'tel' :
@@ -421,7 +421,7 @@ function InputForm({ fieldType, newValue, setNewValue, fieldError, setFieldError
       />
       {fieldError && <p className="text-[11px] text-red-500 dark:text-red-400 mb-2 font-medium">{fieldError}</p>}
       <textarea
-        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:bg-white focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:border-[#40BEB6] mb-4 resize-none transition-all mt-1"
+       className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white dark:focus:border-[#40BEB6] mb-4 resize-none transition-all mt-1"
         placeholder="เหตุผล (Optional)"
         rows={2}
         value={reason}
@@ -1348,7 +1348,7 @@ export default function PlaceDetailPage() {
 
           <div className="mb-6">
             <textarea
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:bg-white focus:ring-4 focus:ring-[#40BEB6]/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-[#40BEB6] resize-none transition-all placeholder-gray-400 dark:placeholder-slate-600"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-4 focus:ring-[#40BEB6]/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white dark:focus:border-[#40BEB6] resize-none transition-all placeholder-gray-400 dark:placeholder-slate-600"
               placeholder="พิมพ์ Note ที่ต้องการบันทึก..."
               rows={3}
               value={newNote}
@@ -1378,7 +1378,7 @@ export default function PlaceDetailPage() {
                   {editingNoteId === n.id ? (
                     <div className="flex flex-col gap-3">
                       <textarea
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white resize-none transition-all"
+                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white resize-none transition-all"
                         rows={3}
                         value={editText}
                         onChange={e => setEditText(e.target.value)}
