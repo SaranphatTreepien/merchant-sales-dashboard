@@ -33,46 +33,54 @@ export async function GET(req: NextRequest) {
 
   try {
     // ยิง 2 query พร้อมกัน — data + count แยกกัน
+    // app/api/admin/contact-history/route.ts
     const [dataResult, countResult] = await Promise.all([
       pool.query(
         `
-        SELECT DISTINCT ON (ch.place_id)
-          ch.place_id,
-          ch.table_name,
-          ch.action,
-          ch.old_value,
-          ch.new_value,
-          ch.changed_by,
-          ch.changed_at,
-          p.name  AS place_name,
-          p.city
-        FROM contact_history ch
-        JOIN places p ON p.place_id = ch.place_id
-        WHERE ${whereClause}
-        ORDER BY ch.place_id, ch.changed_at DESC
-        LIMIT $5 OFFSET $6
-        `,
+  SELECT
+    sub.place_id,
+    sub.table_name,
+    sub.action,
+    sub.old_value,
+    sub.new_value,
+    sub.changed_by,
+    sub.changed_at,
+    sub.place_name,
+    sub.city
+  FROM (
+    SELECT DISTINCT ON (ch.place_id)
+      ch.place_id,
+      ch.table_name,
+      ch.action,
+      ch.old_value,
+      ch.new_value,
+      ch.changed_by,
+      ch.changed_at,
+      p.name AS place_name,
+      p.city
+    FROM contact_history ch
+    JOIN places p ON p.place_id = ch.place_id
+    WHERE ${whereClause}
+    ORDER BY ch.place_id, ch.changed_at DESC
+  ) sub
+  ORDER BY sub.changed_at DESC
+  LIMIT $5 OFFSET $6
+  `,
         [...params, limit, offset],
       ),
       pool.query(
         `
-        SELECT COUNT(DISTINCT ch.place_id) AS total
-        FROM contact_history ch
-        JOIN places p ON p.place_id = ch.place_id
-        WHERE ${whereClause}
-        `,
+    SELECT COUNT(DISTINCT ch.place_id) AS total
+    FROM contact_history ch
+    JOIN places p ON p.place_id = ch.place_id
+    WHERE ${whereClause}
+    `,
         params,
       ),
     ]);
 
-    // sort ผลลัพธ์ตาม changed_at DESC หลัง DISTINCT ON
-    const sorted = [...dataResult.rows].sort(
-      (a, b) =>
-        new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime(),
-    );
-
     return NextResponse.json({
-      data: sorted,
+      data: dataResult.rows,
       pagination: {
         page,
         limit,

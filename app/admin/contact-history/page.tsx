@@ -3,8 +3,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 type ContactLog = {
     id: string
     place_id: string
@@ -31,7 +29,11 @@ type TimelineEvent = {
     status?: string
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+type PageState = {
+    data: ContactLog[]
+    total: number
+    loading: boolean
+}
 
 function formatDate(iso: string) {
     return new Date(iso).toLocaleString('th-TH', {
@@ -54,8 +56,6 @@ function tableLabel(t: string) {
     }
     return map[t] || t
 }
-
-// ─── Timeline Modal ───────────────────────────────────────────────────────────
 
 function TimelineModal({
     placeId, placeName, contactType, onClose
@@ -81,7 +81,6 @@ function TimelineModal({
                 className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden"
                 onClick={e => e.stopPropagation()}
             >
-                {/* Header */}
                 <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/50 dark:bg-slate-900/50">
                     <div>
                         <h3 className="font-semibold text-lg text-slate-900 dark:text-white tracking-tight">{placeName}</h3>
@@ -91,8 +90,6 @@ function TimelineModal({
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
-
-                {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-slate-900">
                     {loading ? (
                         <div className="text-center py-12 text-slate-400">กำลังโหลด...</div>
@@ -102,9 +99,7 @@ function TimelineModal({
                         </div>
                     ) : (
                         <div className="relative">
-                            {/* Timeline line */}
                             <div className="absolute left-3 top-0 bottom-0 w-px bg-slate-200 dark:bg-slate-700" />
-
                             <div className="space-y-4">
                                 {timeline.map((event, idx) => {
                                     const isManual = event.source_type === 'manual'
@@ -120,7 +115,6 @@ function TimelineModal({
                                         if (event.action === 'rejected') return { label: '❌ Rejected', cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' }
                                         if (event.action === 'pending') return { label: '⏳ Pending', cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' }
                                         if (event.action === 'cancelled') return { label: '🚫 ยกเลิก', cls: 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-400' }
-
                                         return { label: event.action, cls: 'bg-slate-100 text-slate-600' }
                                     }
 
@@ -140,12 +134,8 @@ function TimelineModal({
 
                                     return (
                                         <div key={idx} className="relative pl-8">
-                                            {/* Dot */}
                                             <div className={`absolute left-1.5 top-3 w-3 h-3 rounded-full border-2 border-white dark:border-slate-900 ${isManual ? 'bg-[#40BEB6]' : 'bg-slate-400'}`} />
-
                                             <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 p-4">
-                                                {/* Header */}
-
                                                 <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-[11px] font-medium text-slate-400">
@@ -164,7 +154,6 @@ function TimelineModal({
                                                         {badge.label}
                                                     </span>
                                                 </div>
-                                                {/* Value change */}
                                                 <div className="flex items-center gap-2 bg-white dark:bg-slate-900 rounded-lg px-3 py-2 border border-slate-100 dark:border-slate-800 mb-2 flex-wrap">
                                                     <span className="text-slate-400 line-through text-xs truncate max-w-[40%]">
                                                         {extractVal(event.old_value)}
@@ -177,13 +166,10 @@ function TimelineModal({
                                                         }
                                                     </span>
                                                 </div>
-
-                                                {/* Footer */}
                                                 <div className="flex items-center justify-between text-[11px] text-slate-400">
                                                     <span>โดย <span className="font-medium text-slate-600 dark:text-slate-300">{event.changed_by}</span></span>
                                                     <span>{formatDate(event.event_at)}</span>
                                                 </div>
-
                                                 {event.reason && (
                                                     <p className="mt-2 text-[11px] text-slate-500 border-l-2 border-slate-200 dark:border-slate-700 pl-2">
                                                         เหตุผล: {event.reason}
@@ -207,22 +193,23 @@ function TimelineModal({
     )
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
 export default function ContactHistoryPage() {
     const router = useRouter()
-    const [data, setData] = useState<ContactLog[]>([])
-    const [loading, setLoading] = useState(true)
+
+    const [state, setState] = useState<PageState>({
+        data: [],
+        total: 0,
+        loading: true,
+    })
     const [search, setSearch] = useState('')
     const [searchInput, setSearchInput] = useState('')
     const [dateFrom, setDateFrom] = useState('')
     const [dateTo, setDateTo] = useState('')
     const [page, setPage] = useState(1)
-    const [total, setTotal] = useState(0)
     const [modal, setModal] = useState<{ placeId: string, placeName: string, contactType: string } | null>(null)
 
     const fetchData = useCallback(async () => {
-        setLoading(true)
+        setState(prev => ({ ...prev, loading: true }))
         try {
             const params = new URLSearchParams({ page: String(page), limit: '20' })
             if (search) params.set('search', search)
@@ -230,10 +217,14 @@ export default function ContactHistoryPage() {
             if (dateTo) params.set('dateTo', dateTo)
             const res = await fetch(`/api/admin/contact-history?${params}`)
             const json = await res.json()
-            setData(json.data || [])
-            setTotal(parseInt(json.pagination?.total || '0'))
-        } catch { }
-        setLoading(false)
+            setState({
+                data: json.data || [],
+                total: parseInt(json.pagination?.total || '0'),
+                loading: false,
+            })
+        } catch {
+            setState(prev => ({ ...prev, loading: false }))
+        }
     }, [search, dateFrom, dateTo, page])
 
     useEffect(() => { fetchData() }, [fetchData])
@@ -243,7 +234,7 @@ export default function ContactHistoryPage() {
         setPage(1)
     }
 
-    const totalPages = Math.ceil(total / 20)
+    const totalPages = Math.ceil(state.total / 20)
 
     const handleCopyId = (id: string) => {
         navigator.clipboard?.writeText(id)
@@ -251,7 +242,6 @@ export default function ContactHistoryPage() {
 
     return (
         <div className="mx-auto max-w-7xl py-8 px-4 sm:px-6 font-sans text-slate-900 dark:text-slate-100 min-h-screen">
-
             {modal && (
                 <TimelineModal
                     placeId={modal.placeId}
@@ -261,7 +251,6 @@ export default function ContactHistoryPage() {
                 />
             )}
 
-            {/* Header Section */}
             <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 dark:border-slate-800 pb-5">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -269,11 +258,10 @@ export default function ContactHistoryPage() {
                     </h1>
                 </div>
                 <div className="text-sm bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full font-medium">
-                    ทั้งหมด {total.toLocaleString()} รายการ
+                    ทั้งหมด {state.total.toLocaleString()} รายการ
                 </div>
             </div>
 
-            {/* Filter Panel */}
             <div className="mb-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-4">
                 <div className="flex flex-col lg:flex-row gap-3">
                     <input
@@ -290,14 +278,12 @@ export default function ContactHistoryPage() {
                 </div>
             </div>
 
-            {/* Main Content Area */}
-            {loading ? (
+            {state.loading ? (
                 <div className="text-center py-20 text-slate-400">กำลังโหลด...</div>
-            ) : data.length === 0 ? (
+            ) : state.data.length === 0 ? (
                 <div className="text-center py-20 text-slate-400">ไม่พบข้อมูล</div>
             ) : (
                 <>
-                    {/* 💻 DESKTOP VIEW: ปรับดีไซน์ Grid เส้นขอบ คมชัด มินิมอล ตามแบบในรูปภาพ */}
                     <div className="hidden md:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
                         <table className="w-full text-left border-collapse table-fixed">
                             <thead>
@@ -312,12 +298,10 @@ export default function ContactHistoryPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {data.map((row, idx) => {
-                                    // คำนวณลำดับข้อ record ให้รันต่อเนื่องตามเลขหน้า
-                                    const recordIndex = (page - 1) * 20 + idx + 1;
+                                {state.data.map((row, idx) => {
+                                    const recordIndex = (page - 1) * 20 + idx + 1
                                     return (
                                         <tr key={`${row.place_id}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors group">
-                                            {/* คอลัมน์ลำดับแถวแบบในภาพ */}
                                             <td className="px-4 py-3 text-center text-xs font-mono text-slate-400 dark:text-slate-500 border-b border-r border-slate-200 dark:border-slate-800">
                                                 {recordIndex}
                                             </td>
@@ -360,16 +344,15 @@ export default function ContactHistoryPage() {
                                                 </button>
                                             </td>
                                         </tr>
-                                    );
+                                    )
                                 })}
                             </tbody>
                         </table>
                     </div>
 
-                    {/* 📱 MOBILE VIEW: การ์ดดีไซน์แยกชิ้นสไตล์มินิมอลเพื่อความสะดวกบนจอสัมผัส */}
                     <div className="block md:hidden space-y-4">
-                        {data.map((row, idx) => {
-                            const recordIndex = (page - 1) * 20 + idx + 1;
+                        {state.data.map((row, idx) => {
+                            const recordIndex = (page - 1) * 20 + idx + 1
                             return (
                                 <div
                                     key={`mobile-${row.place_id}-${idx}`}
@@ -406,13 +389,12 @@ export default function ContactHistoryPage() {
                                         🔎 ดูประวัติช่องทางนี้
                                     </button>
                                 </div>
-                            );
+                            )
                         })}
                     </div>
                 </>
             )}
 
-            {/* Pagination Component */}
             {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-4 mt-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-2.5 rounded-xl max-w-sm mx-auto shadow-sm">
                     <button

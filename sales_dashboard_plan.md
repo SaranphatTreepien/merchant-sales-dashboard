@@ -252,6 +252,7 @@ PS C:\Users\Saranphat> docker exec merchant_db psql -U postgres -d merchant_db -
  public | contact_verifications_pkey                 | index | postgres | contact_verifications
  public | contact_verifications_place_field_unique   | index | postgres | contact_verifications
  public | deal_cases_pkey                            | index | postgres | deal_cases
+ public | deal_cases_place_id_unique                 | index | postgres | deal_cases
  public | idx_contact_edit_requests_pending          | index | postgres | contact_edit_requests
  public | idx_contact_edit_requests_place_id_created | index | postgres | contact_edit_requests
  public | idx_contact_history_changed_at             | index | postgres | contact_history
@@ -262,6 +263,7 @@ PS C:\Users\Saranphat> docker exec merchant_db psql -U postgres -d merchant_db -
  public | idx_deal_cases_place_id                    | index | postgres | deal_cases
  public | idx_deal_cases_place_id_updated            | index | postgres | deal_cases
  public | idx_deal_cases_sale_id                     | index | postgres | deal_cases
+ public | idx_deal_cases_shop_created                | index | postgres | deal_cases
  public | idx_deal_cases_status                      | index | postgres | deal_cases
  public | idx_place_emails_address                   | index | postgres | place_emails
  public | idx_place_emails_place_id                  | index | postgres | place_emails
@@ -317,4 +319,4 @@ PS C:\Users\Saranphat> docker exec merchant_db psql -U postgres -d merchant_db -
  public | udx_place_whatsapps_number                 | index | postgres | place_whatsapps
  public | users_email_key                            | index | postgres | users
  public | users_pkey                                 | index | postgres | users
-(71 rows)
+(73 rows)
