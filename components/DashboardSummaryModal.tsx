@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas-pro'
-import { getCitiesByCountry, ALL_CITIES, COUNTRY_LABELS } from "@/lib/constants/regions";
+import { COUNTRY_DISPLAY } from "@/lib/constants/regions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ContactStats = {
@@ -278,11 +278,11 @@ export function DashboardSummaryModal({ open, onClose, country }: Props) {
                                 ) : (
                                     <p className="flex items-center gap-1.5 text-sm font-bold text-slate-800 dark:text-white">
                                         <img
-                                            src={`https://flagcdn.com/24x18/${COUNTRY_LABELS[country]?.flag}.png`}
+                                            src={`https://flagcdn.com/24x18/${COUNTRY_DISPLAY[country]?.flag ?? country.toLowerCase()}.png`}
                                             alt={country}
                                             className="w-5 h-auto rounded-sm"
                                         />
-                                        {COUNTRY_LABELS[country]?.name ?? country}
+                                        {COUNTRY_DISPLAY[country]?.name ?? country}
                                     </p>
                                 )}
                             </div>

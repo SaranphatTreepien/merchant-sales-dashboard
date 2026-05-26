@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
   const noted = searchParams.get("noted");
   const country = searchParams.get("country");
   const saleId = searchParams.get("saleId");
+  const hasShop = searchParams.get("hasShop"); // 'yes' | 'no' | null (default = 'no')
   // Pagination (ไม่ใช้ตอน export)
   const page = parseInt(searchParams.get("page") || "1");
   const limit = 20;
@@ -397,10 +398,23 @@ export async function GET(req: NextRequest) {
       );
     if (saleId) {
       conditions.push(
-     `EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id AND dc2.sale_id = $${i++}::uuid)`,
+        `EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id AND dc2.sale_id = $${i++}::uuid)`,
       );
       values.push(saleId);
     }
+    // hasShop filter — default 'no' (ไม่แสดงร้านที่ create shop แล้ว)
+    const effectiveHasShop = hasShop ?? "no";
+    if (effectiveHasShop === "no") {
+      conditions.push(
+        `NOT EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id AND dc2.shop_created_at IS NOT NULL)`,
+      );
+    } else if (effectiveHasShop === "yes") {
+      conditions.push(
+        `EXISTS (SELECT 1 FROM deal_cases dc2 WHERE dc2.place_id = p.place_id AND dc2.shop_created_at IS NOT NULL)`,
+      );
+    }
+    // hasShop = 'all' → ไม่เพิ่ม condition (แสดงทุกร้าน)
+
     const where = conditions.join(" AND ");
 
     // ── Main SELECT ──────────────────────────────────────────────────────────
@@ -516,19 +530,11 @@ export async function GET(req: NextRequest) {
       noted ||
       saleId;
 
-    let total: number;
-    if (!hasFilter) {
-      const approxResult = await pool.query(
-        `SELECT reltuples::bigint AS total FROM pg_class WHERE relname = 'places'`,
-      );
-      total = parseInt(approxResult.rows[0]?.total ?? "0");
-    } else {
-      const countResult = await pool.query(
-        `SELECT COUNT(*) AS total FROM places p WHERE ${where}`,
-        values,
-      );
-      total = parseInt(countResult.rows[0]?.total ?? "0");
-    }
+    const countResult = await pool.query(
+      `SELECT COUNT(*) AS total FROM places p WHERE ${where}`,
+      values,
+    );
+    const total = parseInt(countResult.rows[0]?.total ?? "0");
 
     console.log(
       "[dashboard] rows:",

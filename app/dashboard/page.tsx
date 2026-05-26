@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ExportModal } from '@/components/ExportModal'
 import { DashboardSummaryModal } from '@/components/DashboardSummaryModal'
+import { ReviewModal } from '@/components/ReviewModal'
+import { CreateShopLogModal } from '@/components/CreateShopLogModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ServiceGroup = { label: string; value: string; types: string[] }
@@ -43,6 +45,7 @@ type Filters = {
   hasDeal: 'yes' | 'no' | 'pending' | 'success' | 'stop' | ''
   hasTiktok: boolean
   saleId: string
+  hasShop: 'yes' | 'no' | 'all'  // ← เพิ่ม
 }
 const DEFAULT_FILTERS: Filters = {
   search: '', city: '', serviceType: '', status: '',
@@ -53,6 +56,7 @@ const DEFAULT_FILTERS: Filters = {
   hasDeal: '',
   hasTiktok: false,
   saleId: '',
+  hasShop: 'no',  // ← default = ซ่อนร้านที่ create แล้ว
 }
 const PAGE_SIZE = 20
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -167,10 +171,48 @@ export default function DashboardPage() {
     countryCode: '',
     countryName: '',
     countryFlag: '',
-    noted: 0, pending: 0, success: 0, stop: 0
+    noted: 0, pending: 0, success: 0, stop: 0,
+    shopCreated: 0,  // ← เพิ่ม
   })
   const [dbError, setDbError] = useState<'DB_UNREACHABLE' | 'UNKNOWN' | null>(null)
   const [copiedRefCode, setCopiedRefCode] = useState<string | null>(null)
+  const [createShopMode, setCreateShopMode] = useState(false)
+  const [selectedPlaceIds, setSelectedPlaceIds] = useState<Set<string>>(new Set())
+  const [showReviewModal, setShowReviewModal] = useState(false)
+  const [showLogModal, setShowLogModal] = useState(false)
+  const toggleSelectPlace = (e: React.MouseEvent, placeId: string) => {
+    e.stopPropagation()
+    setSelectedPlaceIds(prev => {
+      const next = new Set(prev)
+      next.has(placeId) ? next.delete(placeId) : next.add(placeId)
+      return next
+    })
+  }
+
+  const toggleCreateShopMode = () => {
+    setCreateShopMode(v => {
+      if (v) setSelectedPlaceIds(new Set()) // ปิด mode → ล้าง selection
+      return !v
+    })
+  }
+
+  const isAllSelected = data.length > 0 && data.every(p => selectedPlaceIds.has(p.place_id))
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedPlaceIds(prev => {
+        const next = new Set(prev)
+        data.forEach(p => next.delete(p.place_id))
+        return next
+      })
+    } else {
+      setSelectedPlaceIds(prev => {
+        const next = new Set(prev)
+        data.forEach(p => next.add(p.place_id))
+        return next
+      })
+    }
+  }
 
   const copyRefCode = (e: React.MouseEvent, code: string) => {
     e.stopPropagation()
@@ -210,7 +252,6 @@ export default function DashboardPage() {
     return () => clearTimeout(timer)
   }, [filters.search])
 
-  // Filters อื่น — skip ตอน mount
   useEffect(() => {
     if (!isMounted.current) return
     setPage(1); fetchData(1)
@@ -221,7 +262,8 @@ export default function DashboardPage() {
     filters.hasWhatsapp, filters.hasTelegram,
     filters.hasBooking, filters.noted,
     filters.hasDeal, filters.hasTiktok,
-    filters.saleId
+    filters.saleId,
+    filters.hasShop,  // ← เพิ่ม
   ])
 
   // Pagination — skip ตอน mount
@@ -257,6 +299,9 @@ export default function DashboardPage() {
     if (f.noted === 'yes') params.set('noted', 'yes')
     if (f.noted === 'no') params.set('noted', 'no')
     if (f.saleId) params.set('saleId', f.saleId)
+    // hasShop — ส่งเสมอ (default 'no' ถ้าไม่ set)
+    params.set('hasShop', f.hasShop)
+    if (!all) params.set('page', String(p))
     if (!all) params.set('page', String(p))
     else params.set('export', '1')
     return params
@@ -282,7 +327,7 @@ export default function DashboardPage() {
         setDbError(json.error === 'DB_UNREACHABLE' ? 'DB_UNREACHABLE' : 'UNKNOWN')
         setData([])
         setTotal(0)
-        setStats({ countryCode: '', countryName: '', countryFlag: '', noted: 0, pending: 0, success: 0, stop: 0 })
+        setStats({ countryCode: '', countryName: '', countryFlag: '', noted: 0, pending: 0, success: 0, stop: 0, shopCreated: 0 })
         setLoading(false)
         return
       }
@@ -332,7 +377,8 @@ export default function DashboardPage() {
     filters.hasDeal !== '',
     filters.hasTiktok,
     filters.hasBooking !== '',
-    filters.noted !== ''
+    filters.noted !== '',
+    filters.hasShop !== 'no'// ← 'no' คือ default ไม่นับ
   ].filter(Boolean).length
 
   const ToggleBtn = ({ label, fKey }: { label: string; fKey: keyof Filters }) => {
@@ -465,6 +511,7 @@ export default function DashboardPage() {
                 </svg>
                 รายละเอียด
               </button>
+
               <button
                 onClick={() => setShowExportModal(true)}
                 className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#40BEB6] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#35a8a1] active:scale-[0.98]"
@@ -474,12 +521,13 @@ export default function DashboardPage() {
                 </svg>
                 Export CSV
               </button>
+
             </div>
           </div>
         </div>
 
         {/* Card 2 — 4 Stat Cards */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
 
           {/* Noted */}
           <div className="group relative overflow-hidden rounded-2xl border border-slate-300/70 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:border-white/15 dark:from-slate-900 dark:to-slate-900/80">
@@ -584,10 +632,34 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+          <div
+            onClick={() => setFilters(f => ({ ...f, hasShop: f.hasShop === 'yes' ? 'no' : 'yes' }))}
+            className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:from-slate-900 dark:to-slate-900/80 cursor-pointer ${filters.hasShop === 'yes'
+              ? 'border-violet-400 dark:border-violet-400/40 ring-2 ring-violet-400/20'
+              : 'border-slate-300/70 dark:border-white/15'
+              }`}
+          >
+            <div className="absolute inset-x-0 top-0 h-1 bg-violet-500" />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                  Shop Created
+                </p>
+                <p className="mt-2 text-3xl font-black tabular-nums text-violet-500 dark:text-violet-400">
+                  {stats.shopCreated?.toLocaleString() ?? '0'}
+                </p>
+                <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                  ส่ง aappoint แล้ว
+                </p>
+              </div>
+              <div className="rounded-xl bg-violet-500/10 p-2 text-violet-500">
+                🏪
+              </div>
+            </div>
+          </div>
 
-        </div>
-
-      </div>
+        </div>  {/* ปิด grid */}
+      </div>    {/* ปิด Header */}
       {dbError && (
         <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 dark:border-red-500/20 dark:bg-red-500/10">
           <div className="flex items-start gap-3">
@@ -732,6 +804,24 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="relative min-w-0 group">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 text-xs">🏪</span>
+                <select
+                  className={`h-11 w-full appearance-none rounded-xl border bg-white dark:bg-slate-900 pl-8 pr-9 py-2 text-xs font-semibold outline-none transition-all duration-200 cursor-pointer ${filters.hasShop !== 'no'
+                    ? 'border-[#40BEB6] text-[#40BEB6] ring-4 ring-[#40BEB6]/10 bg-[#40BEB6]/5'
+                    : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20'
+                    }`}
+                  value={filters.hasShop}
+                  onChange={e => setFilters(f => ({ ...f, hasShop: e.target.value as 'yes' | 'no' | 'all' }))}
+                >
+                  <option value="no">ยังไม่ Create Shop</option>
+                  <option value="yes">✅ Create Shop แล้ว</option>
+                  <option value="all">📋 ทั้งหมด</option>
+                </select>
+                <span className={`absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none ${filters.hasShop !== 'no' ? 'text-[#40BEB6]' : 'text-slate-400'}`}>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                </span>
+              </div>
+              <div className="relative min-w-0 group">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 text-xs">👤</span>
                 <select
                   className={`h-11 w-full appearance-none rounded-xl border bg-white dark:bg-slate-900 pl-8 pr-9 py-2 text-xs font-semibold outline-none transition-all duration-200 cursor-pointer ${filters.saleId !== ''
@@ -750,6 +840,7 @@ export default function DashboardPage() {
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                 </span>
               </div>
+
               <div className="relative min-w-0 group">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 text-xs">🤝</span>
                 <select
@@ -838,13 +929,27 @@ export default function DashboardPage() {
         ) : data.map((place, idx) => (
           <div
             key={place.place_id}
-            onClick={() => router.push(`/dashboard/${place.place_id}`)}
+            onClick={() => !createShopMode && router.push(`/dashboard/${place.place_id}`)}
             role="button"
             tabIndex={0}
-            onKeyDown={e => e.key === 'Enter' && router.push(`/dashboard/${place.place_id}`)}
-            className="block w-full rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-sm shadow-slate-200/50 transition active:scale-[0.99] cursor-pointer dark:border-white/12 dark:bg-slate-900/80 dark:shadow-none"
+            onKeyDown={e => !createShopMode && e.key === 'Enter' && router.push(`/dashboard/${place.place_id}`)}
+            className={`block w-full rounded-2xl border p-4 text-left shadow-sm transition active:scale-[0.99] ${createShopMode ? 'cursor-default' : 'cursor-pointer'
+              } ${selectedPlaceIds.has(place.place_id)
+                ? 'border-violet-400 bg-violet-50/60 dark:border-violet-400/40 dark:bg-violet-500/10'
+                : 'border-slate-200/80 bg-white shadow-slate-200/50 dark:border-white/12 dark:bg-slate-900/80 dark:shadow-none'
+              }`}
           >
             <div className="flex items-start justify-between gap-3">
+              {/* Checkbox mobile */}
+              {createShopMode && (
+                <input
+                  type="checkbox"
+                  checked={selectedPlaceIds.has(place.place_id)}
+                  onClick={e => toggleSelectPlace(e, place.place_id)}
+                  onChange={() => { }}
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 accent-violet-500 cursor-pointer"
+                />
+              )}
               <div className="min-w-0 flex-1">
                 {/* ชื่อร้าน + ธง */}
                 <div className="flex items-center gap-2">
@@ -999,6 +1104,7 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
       {/* ── Pagination ── */}
       <div className="mb-3  flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Left — info */}
@@ -1011,7 +1117,25 @@ export default function DashboardPage() {
 
         {/* Right — pagination */}
         <div className="flex flex-wrap items-center gap-2">
-
+          <button
+            onClick={() => setShowLogModal(true)}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 shadow-sm transition-all hover:border-violet-400/40 hover:text-violet-600 active:scale-[0.98]"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75a2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+            </svg>
+            Shop Log
+          </button>
+          <button
+            onClick={toggleCreateShopMode}
+            className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold shadow-sm transition-all active:scale-[0.98] ${createShopMode
+              ? 'border-violet-400 bg-violet-500 text-white hover:bg-violet-600'
+              : 'border-slate-200 bg-white text-slate-600 hover:border-violet-400/40 hover:text-violet-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
+              }`}
+          >
+            <span>🛒</span>
+            <span>Shop Mode</span>
+          </button>
           {/* ← ก่อนหน้า */}
           <button
             onClick={() => setPage(p => p - 1)}
@@ -1096,7 +1220,16 @@ export default function DashboardPage() {
             {/* thead */}
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-950/55 text-left border-b border-slate-300 dark:border-white/20">
-
+                {createShopMode && (
+                  <th className="pl-4 w-10 px-3 py-3 sm:px-4 sm:py-3.5 border-r border-slate-900/10 dark:border-white/10">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 rounded border-slate-300 accent-violet-500 cursor-pointer"
+                    />
+                  </th>
+                )}
                 {[
                   { label: '#', extra: 'pl-4 sm:pl-5 w-10' },
                   { label: 'Name', extra: 'min-w-[200px]' },
@@ -1138,16 +1271,30 @@ export default function DashboardPage() {
 
                 <tr
                   key={place.place_id}
-                  onClick={() => router.push(`/dashboard/${place.place_id}`)}
-                  className={`cursor-pointer transition-all group border-l-[3px] ${place.deal_status === 'success' ? 'border-l-emerald-400 hover:bg-emerald-50/30 dark:hover:bg-emerald-500/5'
-                    : place.deal_status === 'pending' ? 'border-l-blue-400 hover:bg-blue-50/30 dark:hover:bg-blue-500/5'
-                      : place.deal_status === 'stop' ? 'border-l-red-400 hover:bg-red-50/30 dark:hover:bg-red-500/5'
-                        : 'border-l-transparent hover:bg-slate-50/80 dark:hover:bg-white/[0.035]'
+                  onClick={() => !createShopMode && router.push(`/dashboard/${place.place_id}`)}
+                  className={`transition-all group border-l-[3px] ${createShopMode ? 'cursor-default' : 'cursor-pointer'
+                    } ${selectedPlaceIds.has(place.place_id)
+                      ? 'bg-violet-50/60 dark:bg-violet-500/10 border-l-violet-400'
+                      : place.deal_status === 'success' ? 'border-l-emerald-400 hover:bg-emerald-50/30 dark:hover:bg-emerald-500/5'
+                        : place.deal_status === 'pending' ? 'border-l-blue-400 hover:bg-blue-50/30 dark:hover:bg-blue-500/5'
+                          : place.deal_status === 'stop' ? 'border-l-red-400 hover:bg-red-50/30 dark:hover:bg-red-500/5'
+                            : 'border-l-transparent hover:bg-slate-50/80 dark:hover:bg-white/[0.035]'
                     }`}
                 >
+                  {/* Checkbox — แสดงเฉพาะ createShopMode */}
+                  {createShopMode && (
+                    <td className="px-3 py-3 sm:px-4 sm:py-3.5 border-r border-slate-200 dark:border-white/15">
+                      <input
+                        type="checkbox"
+                        checked={selectedPlaceIds.has(place.place_id)}
+                        onChange={e => toggleSelectPlace(e as unknown as React.MouseEvent, place.place_id)}
+                        onClick={e => e.stopPropagation()}
+                        className="h-4 w-4 rounded border-slate-300 accent-violet-500 cursor-pointer"
+                      />
+                    </td>
+                  )}
                   {/* # */}
-                  <td className="px-3 py-3 sm:px-4 sm:py-3.5 text-xs font-mono text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-white/15
-">
+                  <td className="px-3 py-3 sm:px-4 sm:py-3.5 text-xs font-mono text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-white/15">
                     {(page - 1) * PAGE_SIZE + idx + 1}
                   </td>
                   {/* Name */}
@@ -1312,20 +1459,66 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
+      {/* ── Sticky Bar — Create Shop Mode ── */}
+      {createShopMode && (
+        <div className="fixed bottom-0 inset-x-0 z-40 flex items-center justify-between gap-4 border-t border-violet-200 bg-white/95 px-4 py-3 shadow-[0_-4px_24px_rgba(0,0,0,0.08)] backdrop-blur-md dark:border-violet-500/20 dark:bg-slate-900/95 sm:px-6">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center justify-center rounded-full bg-violet-500 px-2.5 py-1 text-xs font-bold text-white">
+              {selectedPlaceIds.size}
+            </span>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              {selectedPlaceIds.size === 0 ? 'เลือกร้านที่ต้องการสร้าง' : `ร้านที่เลือก`}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedPlaceIds(new Set())}
+              disabled={selectedPlaceIds.size === 0}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-500 transition-all disabled:cursor-not-allowed disabled:opacity-40 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-400"
+            >
+              ล้าง
+            </button>
+            <button
+              onClick={() => setShowReviewModal(true)}
+              disabled={selectedPlaceIds.size === 0}
+              className="rounded-xl bg-violet-500 px-5 py-2 text-xs font-bold text-white shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-40 hover:bg-violet-600 active:scale-[0.98]"
+            >
+              Review & Send →
+            </button>
+          </div>
+        </div>
+      )}
 
-
-      {/* ── Export Modal ── */}
-      {
-        showExportModal && (
-          <ExportModal
-            cities={cities}
-            serviceGroups={serviceGroups}
-            currentFilters={filters}
-            onClose={() => setShowExportModal(false)}
-            country={selectedCountry}
-          />
-        )
-      }
+      {showExportModal && (
+        <ExportModal
+          cities={cities}
+          serviceGroups={serviceGroups}
+          currentFilters={filters}
+          onClose={() => setShowExportModal(false)}
+          country={selectedCountry}
+        />
+      )}
+      <DashboardSummaryModal
+        open={showSummaryModal}
+        onClose={() => setShowSummaryModal(false)}
+        country={selectedCountry}
+      />
+      {showReviewModal && (
+        <ReviewModal
+          placeIds={[...selectedPlaceIds]}
+          onClose={() => setShowReviewModal(false)}
+          onSuccess={() => {
+            setShowReviewModal(false)
+            setCreateShopMode(false)
+            setSelectedPlaceIds(new Set())
+            fetchData(page)
+          }}
+        />
+      )}
+      <CreateShopLogModal
+        open={showLogModal}
+        onClose={() => setShowLogModal(false)}
+      />
       <DashboardSummaryModal
         open={showSummaryModal}
         onClose={() => setShowSummaryModal(false)}

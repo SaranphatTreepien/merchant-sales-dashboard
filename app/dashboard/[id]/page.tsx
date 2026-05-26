@@ -23,11 +23,18 @@ type PlaceDetail = {
   business_status: string
   rating: string | null
   scraped_at: string
-  website: string | null   // ✅ เพิ่มตรงนี้
-
-  service_type: string | null   // ✅ เพิ่ม
-  // contacts
-
+  website: string | null
+  service_type: string | null
+  address: string | null       // ← เพิ่ม
+  description: string | null   // ← เพิ่ม
+  dress_code: string | null    // ← เพิ่ม
+  latitude: string | null      // ← เพิ่ม
+  longitude: string | null     // ← เพิ่ม
+  opening_hours: string | null // ← เพิ่ม
+  reference_code: string | null // ← เพิ่ม (จาก place_payment_info)
+  transfer_account: string | null // ← เพิ่ม
+  transfer_name: string | null    // ← เพิ่ม
+  transfer_type: string | null    // ← เพิ่ม
   line_oa: string | null
   line_personal: string | null
   email: string | null
@@ -377,7 +384,7 @@ function InputForm({ fieldType, newValue, setNewValue, fieldError, setFieldError
       <input
         className={`w-full rounded-lg border px-3 py-2 text-sm text-gray-900 outline-none transition-all mb-1 ${fieldError
           ? 'border-red-400 bg-red-50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 dark:border-red-500/50 dark:bg-red-500/10 dark:text-white'
-         : 'border-gray-200 bg-gray-50 focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white dark:focus:border-[#40BEB6]'
+          : 'border-gray-200 bg-gray-50 focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white dark:focus:border-[#40BEB6]'
           }`}
         inputMode={
           ['phone', 'phone2', 'whatsapp'].includes(fieldType) ? 'tel' :
@@ -421,7 +428,7 @@ function InputForm({ fieldType, newValue, setNewValue, fieldError, setFieldError
       />
       {fieldError && <p className="text-[11px] text-red-500 dark:text-red-400 mb-2 font-medium">{fieldError}</p>}
       <textarea
-       className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white dark:focus:border-[#40BEB6] mb-4 resize-none transition-all mt-1"
+        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white dark:focus:border-[#40BEB6] mb-4 resize-none transition-all mt-1"
         placeholder="เหตุผล (Optional)"
         rows={2}
         value={reason}
@@ -771,6 +778,15 @@ export default function PlaceDetailPage() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [dealCase, setDealCase] = useState<DealCase | null>(null)
+  // transfer fields
+  const [transferAccount, setTransferAccount] = useState('')
+  const [transferName, setTransferName] = useState('')
+  const [transferType, setTransferType] = useState('')
+  const [transferSaving, setTransferSaving] = useState(false)
+  const [transferSaved, setTransferSaved] = useState(false)
+
+  // modal รายละเอียดทั้งหมด
+  const [showDetailModal, setShowDetailModal] = useState(false)
   const [dealLoading, setDealLoading] = useState(false)
   const [dealModalOpen, setDealModalOpen] = useState(false)
   const [dealRefCode, setDealRefCode] = useState('')
@@ -819,11 +835,12 @@ export default function PlaceDetailPage() {
   }, [])
 
   // note form
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false)
+
   const [newNote, setNewNote] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
-
   const fetchData = async () => {
     setLoading(true)
     try {
@@ -834,6 +851,10 @@ export default function PlaceDetailPage() {
       setNotes(json.notes || [])
       setRequests(json.requests || [])
       setPhones(json.phones || [])
+      // sync transfer fields จาก place_payment_info
+      setTransferAccount(json.place.transfer_account ?? '')
+      setTransferName(json.place.transfer_name ?? '')
+      setTransferType(json.place.transfer_type ?? '')
     } catch {
       setError('ไม่พบข้อมูลร้านนี้')
     }
@@ -949,6 +970,46 @@ export default function PlaceDetailPage() {
     }
     setAddingPhone(false)
   }
+  const handleSaveTransfer = async () => {
+    setTransferSaving(true)
+    try {
+      const res = await fetch(`/api/places/${placeId}/payment`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transfer_account: transferAccount.trim() || null,
+          transfer_name: transferName.trim() || null,
+          transfer_type: transferType.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        const Swal = (await import('sweetalert2')).default
+        await Swal.fire({
+          title: 'บันทึกไม่สำเร็จ',
+          text: json.error || `HTTP ${res.status}`,
+          icon: 'error',
+          confirmButtonColor: '#40BEB6',
+          background: window.matchMedia('(prefers-color-scheme: dark)').matches ? '#1e293b' : '#fff',
+          color: window.matchMedia('(prefers-color-scheme: dark)').matches ? '#f1f5f9' : '#111827',
+        })
+        return
+      }
+      setTransferSaved(true)
+      setTimeout(() => setTransferSaved(false), 2000)
+    } catch {
+      const Swal = (await import('sweetalert2')).default
+      await Swal.fire({
+        title: 'เกิดข้อผิดพลาด',
+        text: 'ไม่สามารถเชื่อมต่อ server ได้',
+        icon: 'error',
+        confirmButtonColor: '#40BEB6',
+      })
+    } finally {
+      setTransferSaving(false)
+    }
+  }
+
   const fetchHistory = async () => {
     setHistoryLoading(true)
     try {
@@ -1090,6 +1151,13 @@ export default function PlaceDetailPage() {
           <h2 className="text-base font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
             📋 ข้อมูลติดต่อ
           </h2>
+          <button
+            onClick={() => setShowDetailModal(true)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-gray-200 dark:border-slate-700 text-[11px] font-semibold text-gray-500 dark:text-slate-400 hover:border-[#40BEB6] hover:text-[#40BEB6] hover:bg-[#40BEB6]/5 transition-all"
+          >
+            <span className="text-[10px]">📝</span>
+            รายละเอียด
+          </button>
           <div className="flex flex-col">
 
             {/* ── Phones ── */}
@@ -1171,7 +1239,6 @@ export default function PlaceDetailPage() {
                 )}
               </div>
             </div>
-
             {/* ── Other Contacts ── */}
             {contacts.map(c => (
               <ContactRow
@@ -1182,9 +1249,170 @@ export default function PlaceDetailPage() {
                 placeId={placeId}
                 url={c.url}
                 onRequestSent={fetchData}
-                requests={requests}  // เพิ่ม
+                requests={requests}
               />
             ))}
+
+            {/* ── Payment Info (collapsible) ── */}
+            <div className="mt-2 border-t border-gray-100 dark:border-slate-800 pt-1">
+              <button
+                onClick={() => setIsPaymentOpen(v => !v)}
+                className="w-full flex items-center justify-between py-3 text-left group"
+              >
+                <span className="text-xs font-bold text-gray-500 dark:text-slate-400 flex items-center gap-2 group-hover:text-[#40BEB6] transition-colors">
+                  💳 ข้อมูลการเงิน
+                  {(transferAccount || transferName || transferType) && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#40BEB6]/10 text-[#40BEB6]">
+                      มีข้อมูล
+                    </span>
+                  )}
+                </span>
+                <svg
+                  className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isPaymentOpen ? 'rotate-180' : ''}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              <div className={`overflow-hidden transition-all duration-300 ${isPaymentOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                <div className="space-y-3 pb-3">
+
+                  {/* Reference Code — read only จาก deal_cases */}
+                  <div className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-slate-800/50">
+                    <span className="w-28 shrink-0 text-xs font-medium text-gray-400 dark:text-slate-500">Reference Code</span>
+                    <span className="text-sm font-mono font-semibold text-gray-800 dark:text-gray-200">
+                      {dealCase?.reference_code || place.reference_code || <span className="text-gray-300 dark:text-slate-600 font-normal italic text-xs">—</span>}
+                    </span>
+                  </div>
+
+                  {/* Transfer Account */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-400 dark:text-slate-500 mb-1 block">Transfer Account</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={transferAccount}
+                        onChange={e => setTransferAccount(e.target.value)}
+                        placeholder="เลขบัญชี..."
+                        className="flex-1 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-[#40BEB6] focus:ring-2 focus:ring-[#40BEB6]/20 transition-all"
+                      />
+                      {transferAccount && (
+                        <button
+                          onClick={() => setTransferAccount('')}
+                          className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                          title="ล้างค่า"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Transfer Name */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-400 dark:text-slate-500 mb-1 block">Transfer Name</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={transferName}
+                        onChange={e => setTransferName(e.target.value)}
+                        placeholder="ชื่อบัญชี..."
+                        className="flex-1 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-[#40BEB6] focus:ring-2 focus:ring-[#40BEB6]/20 transition-all"
+                      />
+                      {transferName && (
+                        <button
+                          onClick={() => setTransferName('')}
+                          className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                          title="ล้างค่า"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Transfer Type */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-400 dark:text-slate-500 mb-1 block">Transfer Type</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={transferType}
+                        onChange={e => setTransferType(e.target.value)}
+                        placeholder="เช่น promptpay, bank_transfer..."
+                        className="flex-1 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 px-3 py-1.5 text-sm text-gray-900 dark:text-white outline-none focus:border-[#40BEB6] focus:ring-2 focus:ring-[#40BEB6]/20 transition-all"
+                      />
+                      {transferType && (
+                        <button
+                          onClick={() => setTransferType('')}
+                          className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                          title="ล้างค่า"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      onClick={async () => {
+                        const Swal = (await import('sweetalert2')).default
+                        const result = await Swal.fire({
+                          title: 'ล้างข้อมูลการเงิน?',
+                          text: 'Transfer Account, Name, Type จะถูกลบออกทั้งหมด',
+                          icon: 'warning',
+                          showCancelButton: true,
+                          confirmButtonColor: '#ef4444',
+                          cancelButtonColor: '#6b7280',
+                          confirmButtonText: 'ล้างข้อมูล',
+                          cancelButtonText: 'ยกเลิก',
+                          background: window.matchMedia('(prefers-color-scheme: dark)').matches ? '#1e293b' : '#fff',
+                          color: window.matchMedia('(prefers-color-scheme: dark)').matches ? '#f1f5f9' : '#111827',
+                        })
+                        if (!result.isConfirmed) return
+                        setTransferAccount('')
+                        setTransferName('')
+                        setTransferType('')
+                        setTransferSaving(true)
+                        try {
+                          await fetch(`/api/places/${placeId}/payment`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ transfer_account: null, transfer_name: null, transfer_type: null }),
+                          })
+                          setTransferSaved(true)
+                          setTimeout(() => setTransferSaved(false), 2000)
+                        } finally {
+                          setTransferSaving(false)
+                        }
+                      }}
+                      disabled={!transferAccount && !transferName && !transferType}
+                      className="text-[11px] font-medium text-red-400 hover:text-red-600 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                    >
+                      🗑️ ล้างทั้งหมด
+                    </button>
+
+                    <button
+                      onClick={handleSaveTransfer}
+                      disabled={transferSaving}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#40BEB6] hover:bg-[#35a099] text-white text-xs font-bold transition-all disabled:opacity-50 active:scale-[0.98]"
+                    >
+                      {transferSaving ? 'กำลังบันทึก...' : transferSaved ? '✅ บันทึกแล้ว' : '💾 บันทึก'}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            </div>
 
           </div>
         </div>  {/* ปิด card Contacts */}
@@ -1338,7 +1566,148 @@ export default function PlaceDetailPage() {
             </div>
           )}
         </div>
+
+        {/* ── Section ข้อมูลการเงิน ── */}
+
+
+        {/* ── Modal รายละเอียดทั้งหมด ── */}
+        {showDetailModal && place && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-white/10 shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">📋 รายละเอียดทั้งหมด</h2>
+                  <p className="text-xs font-mono text-slate-400 mt-0.5">{place.place_id}</p>
+                </div>
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="rounded-xl p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+
+                {/* ข้อมูลทั่วไป */}
+                <section>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3">ข้อมูลทั่วไป</p>
+                  <div className="rounded-xl border border-slate-100 dark:border-white/8 divide-y divide-slate-100 dark:divide-white/8">
+                    {[
+                      { label: '🏪 ชื่อร้าน', value: place.name },
+                      { label: '🧩 Service Type', value: place.service_type ? serviceTypeLabel(place.service_type) : null },
+                      { label: '🏙️ City', value: place.city },
+                      { label: '🌍 Country', value: place.country },
+                      { label: '📍 Address', value: place.address },
+                      { label: '🧭 Latitude', value: place.latitude },
+                      { label: '🧭 Longitude', value: place.longitude },
+                      { label: '⭐ Rating', value: place.rating },
+                      { label: '🟢 Business Status', value: businessStatusLabel(place.business_status).label },
+                      { label: '📝 Description', value: place.description },
+                      { label: '👔 Dress Code', value: place.dress_code },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="flex items-start gap-3 px-4 py-2.5">
+                        <span className="w-32 shrink-0 text-[11px] font-bold uppercase tracking-wider text-slate-400 pt-0.5">{label}</span>
+                        <span className="text-xs font-medium text-slate-800 dark:text-slate-100 break-all">
+                          {value ?? <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* ช่องทางติดต่อ */}
+                <section>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3">ช่องทางติดต่อ</p>
+                  <div className="rounded-xl border border-slate-100 dark:border-white/8 divide-y divide-slate-100 dark:divide-white/8">
+                    {[
+                      { label: '📞 Phone', value: phones.map(p => p.number).join(', ') || null },
+                      { label: '💬 LINE OA', value: place.line_oa },
+                      { label: '👤 LINE Personal', value: place.line_personal },
+                      { label: '🔗 LINE URL', value: place.line_url },
+                      { label: '📧 Email', value: place.email },
+                      { label: '📘 Facebook', value: place.facebook_url },
+                      { label: '📸 Instagram', value: place.instagram_handle },
+                      { label: '💭 Messenger', value: place.messenger_url },
+                      { label: '🟢 WhatsApp', value: place.whatsapp },
+                      { label: '✈️ Telegram', value: place.telegram_url },
+                      { label: '🌐 Website', value: place.website },
+                      { label: '🗺️ Google Map', value: place.google_map_url },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="flex items-start gap-3 px-4 py-2.5">
+                        <span className="w-32 shrink-0 text-[11px] font-bold uppercase tracking-wider text-slate-400 pt-0.5">{label}</span>
+                        <span className="text-xs font-medium text-slate-800 dark:text-slate-100 break-all">
+                          {value ?? <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* ข้อมูลการเงิน */}
+                <section>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3">ข้อมูลการเงิน</p>
+                  <div className="rounded-xl border border-slate-100 dark:border-white/8 divide-y divide-slate-100 dark:divide-white/8">
+                    {[
+                      { label: 'Reference Code', value: dealCase?.reference_code ?? place.reference_code },
+                      { label: 'Transfer Account', value: transferAccount || null },
+                      { label: 'Transfer Name', value: transferName || null },
+                      { label: 'Transfer Type', value: transferType || null },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="flex items-start gap-3 px-4 py-2.5">
+                        <span className="w-32 shrink-0 text-[11px] font-bold uppercase tracking-wider text-slate-400 pt-0.5">{label}</span>
+                        <span className="text-xs font-mono font-medium text-slate-800 dark:text-slate-100 break-all">
+                          {value ?? <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Deal Case */}
+                {dealCase && (
+                  <section>
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3">เคสการขาย</p>
+                    <div className="rounded-xl border border-slate-100 dark:border-white/8 divide-y divide-slate-100 dark:divide-white/8">
+                      {[
+                        { label: 'Status', value: dealStatusBadge(dealCase.status).label },
+                        { label: 'Sale', value: dealCase.sale_name },
+                        { label: 'Note', value: dealCase.note },
+                        { label: 'Updated', value: formatDate(dealCase.updated_at) },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex items-start gap-3 px-4 py-2.5">
+                          <span className="w-32 shrink-0 text-[11px] font-bold uppercase tracking-wider text-slate-400 pt-0.5">{label}</span>
+                          <span className="text-xs font-medium text-slate-800 dark:text-slate-100 break-all">
+                            {value ?? <span className="text-slate-300 dark:text-slate-600 italic">—</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-slate-200 dark:border-white/10 shrink-0 flex justify-end">
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 transition-all"
+                >
+                  ปิด
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── 2. Notes ── */}
+
 
         {/* ── 2. Notes (Desktop ขวาบน / Mobile อันดับ 2) ── */}
         <div className="lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:row-span-2 order-2 rounded-2xl border border-gray-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-[#0f172a] lg:sticky lg:top-6">
@@ -1378,7 +1747,7 @@ export default function PlaceDetailPage() {
                   {editingNoteId === n.id ? (
                     <div className="flex flex-col gap-3">
                       <textarea
-                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white resize-none transition-all"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#40BEB6] focus:bg-white focus:text-gray-900 focus:ring-2 focus:ring-[#40BEB6]/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:bg-slate-900 dark:focus:text-white resize-none transition-all"
                         rows={3}
                         value={editText}
                         onChange={e => setEditText(e.target.value)}

@@ -2,20 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { getCitiesByCountry, OTHER_CITY } from "@/lib/constants/regions";
-const COUNTRY_MAP: Record<string, { name: string; flag: string }> = {
-  TH: { name: "Thailand", flag: "TH" },
-  SG: { name: "Singapore", flag: "SG" },
-  MY: { name: "Malaysia", flag: "MY" },
-  ID: { name: "Indonesia", flag: "ID" },
-  VN: { name: "Vietnam", flag: "VN" },
-  PH: { name: "Philippines", flag: "PH" },
-  JP: { name: "Japan", flag: "JP" },
-  KR: { name: "South Korea", flag: "KR" },
-  CN: { name: "China", flag: "CN" },
-  US: { name: "United States", flag: "US" },
-  GB: { name: "United Kingdom", flag: "GB" },
-};
+import {
+  getCitiesByCountry,
+  OTHER_CITY,
+  COUNTRY_DISPLAY,
+} from "@/lib/constants/regions";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -38,7 +29,7 @@ export async function GET(req: NextRequest) {
       : "";
 
   const cityValue = isOther ? whitelist : (city ?? null);
-  const [notedResult, dealResult] = await Promise.all([
+   const [notedResult, dealResult, shopResult] = await Promise.all([
     // noted — parameterized + city filter
     query(
       `SELECT COUNT(DISTINCT pn.place_id) AS noted
@@ -46,8 +37,9 @@ export async function GET(req: NextRequest) {
      JOIN places p ON p.place_id = pn.place_id
      WHERE ($1::text IS NULL OR p.country = $1)
      ${cityCondition}`,
-      cityValue ? [isAll ? null : country, cityValue] : [isAll ? null : country],
-
+      cityValue
+        ? [isAll ? null : country, cityValue]
+        : [isAll ? null : country],
     ),
     // deal — parameterized + city filter
     query(
@@ -59,16 +51,29 @@ export async function GET(req: NextRequest) {
      JOIN places p ON p.place_id = dc.place_id
      WHERE ($1::text IS NULL OR p.country = $1)
      ${cityCondition}`,
-      cityValue ? [isAll ? null : country, cityValue] : [isAll ? null : country],
-
+      cityValue
+        ? [isAll ? null : country, cityValue]
+        : [isAll ? null : country],
+    ),
+    // shop_created — นับร้านที่ create shop แล้ว
+    query(
+      `SELECT COUNT(*) AS shop_created
+       FROM deal_cases dc
+       JOIN places p ON p.place_id = dc.place_id
+       WHERE dc.shop_created_at IS NOT NULL
+       AND ($1::text IS NULL OR p.country = $1)
+       ${cityCondition}`,
+      cityValue
+        ? [isAll ? null : country, cityValue]
+        : [isAll ? null : country],
     ),
   ]);
 
   const countryCode = country && country !== "ALL" ? country : "ALL";
 
-  const countryInfo = COUNTRY_MAP[countryCode] ?? {
+  const countryInfo = COUNTRY_DISPLAY[countryCode] ?? {
     name: countryCode,
-    flag: "🌏",
+    flag: countryCode.toLowerCase(),
   };
   const deal = dealResult.rows[0];
 
@@ -80,5 +85,6 @@ export async function GET(req: NextRequest) {
     pending: parseInt(deal?.pending ?? "0"),
     success: parseInt(deal?.success ?? "0"),
     stop: parseInt(deal?.stop ?? "0"),
+    shopCreated: parseInt(shopResult.rows[0]?.shop_created ?? "0"),
   });
 }

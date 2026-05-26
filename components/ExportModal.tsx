@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { COUNTRY_LABELS } from '@/lib/constants/regions'
+import { COUNTRY_DISPLAY } from '@/lib/constants/regions'
 
 import Swal from 'sweetalert2'
 type ServiceGroup = { label: string; value: string; types: string[] }
@@ -103,7 +103,7 @@ export function ExportModal({ cities, serviceGroups, onClose, country }: {
     }
 
     const handleDownload = async () => {
-        const countryLabel = country === 'ALL' ? 'All Countries' : (COUNTRY_LABELS[country]?.name ?? country)
+        const countryLabel = country === 'ALL' ? 'All Countries' : (COUNTRY_DISPLAY[country]?.name ?? country)
         const confirm = await Swal.fire({
             title: 'Export CSV?',
             text: `${countryLabel} · ${selCities.size > 0 ? selCities.size + ' จังหวัด' : 'ทุกจังหวัด'} · ${selectedCols.size} columns`,
@@ -157,7 +157,7 @@ export function ExportModal({ cities, serviceGroups, onClose, country }: {
             const url = URL.createObjectURL(blob)
             const a = document.createElement('a')
             a.href = url
-            const countrySlug = country === 'ALL' ? 'all' : (COUNTRY_LABELS[country]?.flag ?? country.toLowerCase())
+            const countrySlug = country === 'ALL' ? 'all' : (COUNTRY_DISPLAY[country]?.flag ?? country.toLowerCase())
             a.download = `export-${countrySlug}-${new Date().toISOString().slice(0, 10)}.csv`
             a.click()
             URL.revokeObjectURL(url)
@@ -197,13 +197,13 @@ export function ExportModal({ cities, serviceGroups, onClose, country }: {
                             <div className="mt-1 flex items-center gap-1.5">
                                 {country !== 'ALL' && (
                                     <img
-                                        src={`https://flagcdn.com/24x18/${COUNTRY_LABELS[country]?.flag}.png`}
+                                        src={`https://flagcdn.com/24x18/${COUNTRY_DISPLAY[country]?.flag ?? country.toLowerCase()}.png`}
                                         alt={country}
                                         className="h-3.5 w-auto rounded-sm"
                                     />
                                 )}
                                 <p className="text-xs text-slate-400">
-                                    {country === 'ALL' ? '🌏 All Countries' : COUNTRY_LABELS[country]?.name ?? country}
+                                    {country === 'ALL' ? '🌏 All Countries' : COUNTRY_DISPLAY[country]?.name ?? country}
                                     {' '}— เลือกข้อมูลและ columns ที่ต้องการดาวน์โหลด
                                 </p>
                             </div>

@@ -1,3 +1,4 @@
+// app/api/places/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 
@@ -10,39 +11,51 @@ export async function GET(
   try {
     const { rows } = await pool.query(
       `SELECT
-  p.place_id,
-  p.name,
-  p.city,
-  p.business_status,
-  p.rating,
-  p.scraped_at,
-  p.website,         
-  p.service_type,       -- ✅ เพิ่ม
-
-    p.google_map_url,
-  p.has_booking,
-  p.country,
-    c.line_oa, c.line_personal, c.line_url,
-  p.has_booking,
-    c.line_oa, c.line_personal, c.line_url,
-    c.email, c.facebook_url,
-    c.instagram_handle, c.instagram_url,
-    c.messenger_url,
-    c.whatsapp, c.telegram_url
-  FROM places p
+        p.place_id,
+        p.name,
+        p.address,
+        p.city,
+        p.country,
+        p.business_status,
+        p.rating,
+        p.scraped_at,
+        p.website,
+        p.service_type,
+        p.google_map_url,
+        p.has_booking,
+        p.description,
+        p.dress_code,
+        p.opening_hours,
+        p.latitude::text,
+        p.longitude::text,
+        pi.reference_code,
+        pi.transfer_account,
+        pi.transfer_name,
+        pi.transfer_type,
+        c.line_oa,
+        c.line_personal,
+        c.line_url,
+        c.email,
+        c.facebook_url,
+        c.instagram_handle,
+        c.instagram_url,
+        c.messenger_url,
+        c.whatsapp,
+        c.telegram_url
+      FROM places p
+      LEFT JOIN place_payment_info pi ON pi.place_id = p.place_id
       LEFT JOIN LATERAL (
         SELECT
-          
           MAX(CASE WHEN pl.type = 'oa'       THEN pl.line_id END) AS line_oa,
           MAX(CASE WHEN pl.type = 'personal' THEN pl.line_id END) AS line_personal,
-          MAX(pl.line_url)      AS line_url,
-          MAX(pe.address)       AS email,
-          MAX(pfb.url)          AS facebook_url,
-          MAX(pig.handle)       AS instagram_handle,
+          MAX(pl.line_url)       AS line_url,
+          MAX(pe.address)        AS email,
+          MAX(pfb.url)           AS facebook_url,
+          MAX(pig.handle)        AS instagram_handle,
           MAX(pig.instagram_url) AS instagram_url,
-          MAX(pms.url)          AS messenger_url,
-          MAX(pwa.number)       AS whatsapp,
-          MAX(ptg.telegram_url) AS telegram_url
+          MAX(pms.url)           AS messenger_url,
+          MAX(pwa.number)        AS whatsapp,
+          MAX(ptg.telegram_url)  AS telegram_url
         FROM places p2
         LEFT JOIN place_phones     ph  ON ph.place_id  = p2.place_id AND ph.deleted_at IS NULL
         LEFT JOIN place_lines      pl  ON pl.place_id  = p2.place_id
@@ -62,39 +75,52 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const { rows: notes } = await pool.query(
-      `
-      SELECT n.*, u.name AS author
+      `SELECT n.*, u.name AS author
       FROM place_notes n
       JOIN users u ON u.id = n.user_id
       WHERE n.place_id = $1
-      ORDER BY n.created_at DESC
-    `,
+      ORDER BY n.created_at DESC`,
       [id],
     );
 
     const { rows: requests } = await pool.query(
-      `
-  SELECT 
-    r.*, 
-    u.name AS requested_by_name,
-    l.reject_reason
-  FROM contact_edit_requests r
-  JOIN users u ON u.id = r.requested_by
-  LEFT JOIN contact_edit_logs l ON l.request_id = r.id
-  WHERE r.place_id = $1
-  ORDER BY r.created_at DESC
-  `,
-      [id],
-    );
-    const { rows: phones } = await pool.query(
-      `SELECT id, number, normalized, label, is_primary, is_manual, added_by, source, created_at
-FROM place_phones
-WHERE place_id = $1 AND deleted_at IS NULL
-ORDER BY is_primary DESC, created_at ASC`,
+      `SELECT
+        r.*,
+        u.name AS requested_by_name,
+        l.reject_reason
+      FROM contact_edit_requests r
+      JOIN users u ON u.id = r.requested_by
+      LEFT JOIN contact_edit_logs l ON l.request_id = r.id
+      WHERE r.place_id = $1
+      ORDER BY r.created_at DESC`,
       [id],
     );
 
-    return NextResponse.json({ place: rows[0], notes, requests, phones });
+    const { rows: phones } = await pool.query(
+      `SELECT id, number, normalized, label, is_primary, is_manual, added_by, source, created_at
+      FROM place_phones
+      WHERE place_id = $1 AND deleted_at IS NULL
+      ORDER BY is_primary DESC, created_at ASC`,
+      [id],
+    );
+    // AFTER
+    const { rows: dealRows } = await pool.query(
+      `SELECT reference_code
+   FROM deal_cases
+   WHERE place_id = $1
+   ORDER BY updated_at DESC
+   LIMIT 1`,
+      [id],
+    );
+    const deal_reference_code = dealRows[0]?.reference_code ?? null;
+
+    return NextResponse.json({
+      place: rows[0],
+      notes,
+      requests,
+      phones,
+      deal_reference_code,
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "DB error" }, { status: 500 });

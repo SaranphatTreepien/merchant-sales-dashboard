@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import {
-  REGIONS,
-  COUNTRY_LABELS,
+  COUNTRY_DISPLAY,
   getCitiesByCountry,
   OTHER_CITY,
   OTHER_CITY_LABEL,
 } from "@/lib/constants/regions";
+
 const SERVICE_GROUPS = [
   {
     label: "🍽️ Restaurant & Food",
@@ -276,83 +276,81 @@ const SERVICE_GROUPS = [
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const country = searchParams.get("country") || "ALL"; // ← เปลี่ยน default เป็น ALL
+  const country = searchParams.get("country") || "ALL";
 
   try {
-    // AFTER
-    const provincesForCountry =
-      country !== "ALL" ? getCitiesByCountry(country) : [];
+    const isTH = country === "TH";
+    const thCities = isTH ? getCitiesByCountry("TH") : [];
 
     const [countryRows, cityRows, otherRows, salesRows] = await Promise.all([
       pool
         .query(
-          `
-    SELECT country, COUNT(*) as total
-    FROM places
-    WHERE country IS NOT NULL
-    GROUP BY country
-    ORDER BY total DESC
-  `,
+          `SELECT country, COUNT(*) as total
+           FROM places
+           WHERE country IS NOT NULL
+           GROUP BY country
+           ORDER BY total DESC`,
         )
         .then((r) => r.rows),
 
       country !== "ALL"
-        ? pool
-            .query(
-              `
-    SELECT DISTINCT
-      CASE city
-        WHEN 'Pattaya'       THEN 'ชลบุรี'
-        WHEN 'Pattaya City'  THEN 'ชลบุรี'
-        WHEN 'Muang Pattaya' THEN 'ชลบุรี'
-        WHEN 'Nongprue'      THEN 'ชลบุรี'
-        WHEN 'Khlong Nueng'  THEN 'ปทุมธานี'
-        WHEN 'Nonthaburi'    THEN 'นนทบุรี'
-        WHEN 'Samut Prakan'  THEN 'สมุทรปราการ'
-        WHEN 'Ao Salat'      THEN 'ระยอง'
-        WHEN 'Ban Suan'      THEN 'ชลบุรี'
-        ELSE city
-      END AS city
-    FROM places
-    WHERE city = ANY($1) AND country = $2
-    ORDER BY city ASC
-  `,
-              [provincesForCountry, country],
-            )
-            .then((r) => r.rows)
+        ? isTH
+          ? pool
+              .query(
+                `SELECT DISTINCT
+                  CASE city
+                    WHEN 'Pattaya'       THEN 'ชลบุรี'
+                    WHEN 'Pattaya City'  THEN 'ชลบุรี'
+                    WHEN 'Muang Pattaya' THEN 'ชลบุรี'
+                    WHEN 'Nongprue'      THEN 'ชลบุรี'
+                    WHEN 'Khlong Nueng'  THEN 'ปทุมธานี'
+                    WHEN 'Nonthaburi'    THEN 'นนทบุรี'
+                    WHEN 'Samut Prakan'  THEN 'สมุทรปราการ'
+                    WHEN 'Ao Salat'      THEN 'ระยอง'
+                    WHEN 'Ban Suan'      THEN 'ชลบุรี'
+                    ELSE city
+                  END AS city
+                FROM places
+                WHERE city = ANY($1) AND country = $2
+                ORDER BY city ASC`,
+                [thCities, country],
+              )
+              .then((r) => r.rows)
+          : pool
+              .query(
+                `SELECT DISTINCT city
+                 FROM places
+                 WHERE country = $1
+                   AND city IS NOT NULL AND city != ''
+                 ORDER BY city ASC`,
+                [country],
+              )
+              .then((r) => r.rows)
         : Promise.resolve([]),
 
-      country !== "ALL"
+      country !== "ALL" && isTH
         ? pool
             .query(
-              `
-    SELECT COUNT(*) as total
-    FROM places
-    WHERE country = $1
-      AND (city IS NULL OR city = '' OR city != ALL($2))
-  `,
-              [country, provincesForCountry],
+              `SELECT COUNT(*) as total
+               FROM places
+               WHERE country = $1
+                 AND (city IS NULL OR city = '' OR city != ALL($2))`,
+              [country, thCities],
             )
             .then((r) => r.rows)
         : Promise.resolve([{ total: "0" }]),
 
       pool
-        .query(
-          `
-  SELECT id, name FROM users ORDER BY name ASC
-  `,
-        )
+        .query(`SELECT id, name FROM users ORDER BY name ASC`)
         .then((r) => r.rows),
     ]);
 
-    const countryList = countryRows
-      .filter((r) => REGIONS[r.country])
-      .map((r) => ({
-        code: r.country,
-        name: COUNTRY_LABELS[r.country]?.name ?? r.country,
-        flag: COUNTRY_LABELS[r.country]?.flag ?? r.country.toLowerCase(),
-        total: parseInt(r.total),
-      }));
+    const countryList = countryRows.map((r) => ({
+      code: r.country,
+      name: COUNTRY_DISPLAY[r.country]?.name ?? r.country,
+      flag: COUNTRY_DISPLAY[r.country]?.flag ?? r.country.toLowerCase(),
+      total: parseInt(r.total),
+    }));
 
     const allTotal = countryList.reduce((sum, c) => sum + c.total, 0);
     const countries = [

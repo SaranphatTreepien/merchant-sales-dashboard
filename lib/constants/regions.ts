@@ -1,19 +1,92 @@
 // ─── Region Master Data ───────────────────────────────────────────────────────
 // เพิ่มประเทศใหม่ที่นี่ที่เดียว แล้วทุกที่จะใช้ได้เลย
 
-export type CountryCode = "TH" | "HK" | "LA" | "MM" | "TR";
 
-export const COUNTRY_LABELS: Record<string, { name: string; flag: string }> = {
-    TH: { name: "Thailand", flag: "th" },
-    HK: { name: "Hong Kong", flag: "hk" },
-    LA: { name: "Laos", flag: "la" },
-    MM: { name: "Myanmar", flag: "mm" },
-    TR: { name: "Turkey", flag: "tr" },
+// AFTER
+export const COUNTRY_DISPLAY: Record<string, { name: string; flag: string }> = {
+  // ── เอเชียตะวันออกเฉียงใต้ ──────────────────────────────────────────────
+  TH: { name: "Thailand",             flag: "th" },
+  SG: { name: "Singapore",            flag: "sg" },
+  MY: { name: "Malaysia",             flag: "my" },
+  ID: { name: "Indonesia",            flag: "id" },
+  PH: { name: "Philippines",          flag: "ph" },
+  VN: { name: "Vietnam",              flag: "vn" },
+  MM: { name: "Myanmar",              flag: "mm" },
+  LA: { name: "Laos",                 flag: "la" },
+  KH: { name: "Cambodia",             flag: "kh" },
+  BN: { name: "Brunei",               flag: "bn" },
+  TL: { name: "Timor-Leste",          flag: "tl" },
+
+  // ── เอเชียตะวันออก ───────────────────────────────────────────────────────
+  CN: { name: "China",                flag: "cn" },
+  JP: { name: "Japan",                flag: "jp" },
+  KR: { name: "South Korea",          flag: "kr" },
+  TW: { name: "Taiwan",               flag: "tw" },
+  HK: { name: "Hong Kong",            flag: "hk" },
+  MO: { name: "Macau",                flag: "mo" },
+  MN: { name: "Mongolia",             flag: "mn" },
+
+  // ── เอเชียใต้ ────────────────────────────────────────────────────────────
+  IN: { name: "India",                flag: "in" },
+  PK: { name: "Pakistan",             flag: "pk" },
+  BD: { name: "Bangladesh",           flag: "bd" },
+  LK: { name: "Sri Lanka",            flag: "lk" },
+  NP: { name: "Nepal",                flag: "np" },
+
+  // ── เอเชียตะวันตก / ตะวันออกกลาง ────────────────────────────────────────
+  AE: { name: "UAE",                  flag: "ae" },
+  SA: { name: "Saudi Arabia",         flag: "sa" },
+  QA: { name: "Qatar",                flag: "qa" },
+  KW: { name: "Kuwait",               flag: "kw" },
+  BH: { name: "Bahrain",              flag: "bh" },
+  OM: { name: "Oman",                 flag: "om" },
+  IL: { name: "Israel",               flag: "il" },
+  TR: { name: "Turkey",               flag: "tr" },
+  JO: { name: "Jordan",               flag: "jo" },
+  LB: { name: "Lebanon",              flag: "lb" },
+
+  // ── ยุโรป ────────────────────────────────────────────────────────────────
+  GB: { name: "United Kingdom",       flag: "gb" },
+  FR: { name: "France",               flag: "fr" },
+  DE: { name: "Germany",              flag: "de" },
+  IT: { name: "Italy",                flag: "it" },
+  ES: { name: "Spain",                flag: "es" },
+  NL: { name: "Netherlands",          flag: "nl" },
+  CH: { name: "Switzerland",          flag: "ch" },
+  SE: { name: "Sweden",               flag: "se" },
+  NO: { name: "Norway",               flag: "no" },
+  DK: { name: "Denmark",              flag: "dk" },
+  FI: { name: "Finland",              flag: "fi" },
+  PT: { name: "Portugal",             flag: "pt" },
+  GR: { name: "Greece",               flag: "gr" },
+  AT: { name: "Austria",              flag: "at" },
+  BE: { name: "Belgium",              flag: "be" },
+  PL: { name: "Poland",               flag: "pl" },
+  CZ: { name: "Czech Republic",       flag: "cz" },
+  HU: { name: "Hungary",              flag: "hu" },
+  RO: { name: "Romania",              flag: "ro" },
+  RU: { name: "Russia",               flag: "ru" },
+
+  // ── โอเชียเนีย ───────────────────────────────────────────────────────────
+  AU: { name: "Australia",            flag: "au" },
+  NZ: { name: "New Zealand",          flag: "nz" },
+
+  // ── อเมริกา ──────────────────────────────────────────────────────────────
+  US: { name: "United States",        flag: "us" },
+  CA: { name: "Canada",               flag: "ca" },
+  MX: { name: "Mexico",               flag: "mx" },
+  BR: { name: "Brazil",               flag: "br" },
+
+  // ── แอฟริกา ──────────────────────────────────────────────────────────────
+  ZA: { name: "South Africa",         flag: "za" },
+  EG: { name: "Egypt",                flag: "eg" },
+  NG: { name: "Nigeria",              flag: "ng" },
+  KE: { name: "Kenya",                flag: "ke" },
 };
 export const OTHER_CITY = "other";
 export const OTHER_CITY_LABEL = "อื่นๆ";
-export const REGIONS: Record<string, string[]> = {
-    TH: [
+// TH เท่านั้น — whitelist 77 จังหวัด + ชื่อภาษาอังกฤษ
+export const TH_CITIES: string[] = [ 
         "กรุงเทพมหานคร",
         "กระบี่",
         "กาญจนบุรี",
@@ -175,131 +248,23 @@ export const REGIONS: Record<string, string[]> = {
         "Khlong Nueng",
         "Ao Salat",
         "Ban Suan",
-    ],
+        "Jomtien",
+        "Na Jomtien",
+        "Pattaya Beach",
+        "Pattaya City Center",
+        "Pattaya Central",
+        "Pattaya South",
+        "Pattaya North",
+        "Pattaya East",
 
-    HK: [
-        "Central and Western",
-        "Eastern",
-        "Southern",
-        "Wan Chai",
-        "Kowloon City",
-        "Kwun Tong",
-        "Sham Shui Po",
-        "Wong Tai Sin",
-        "Yau Tsim Mong",
-        "Islands",
-        "Kwai Tsing",
-        "North",
-        "Sai Kung",
-        "Sha Tin",
-        "Tai Po",
-        "Tsuen Wan",
-        "Tuen Mun",
-        "Yuen Long",
-        "Hong Kong Island",
-        "Kowloon",
-        "New Territories",
-        "Central",
-        "Admiralty",
-        "Sheung Wan",
-        "Causeway Bay",
-        "Tsim Sha Tsui",
-        "Mong Kok",
-        "Yau Ma Tei",
-        "Jordan",
-        // ← เพิ่มตรงนี้
-        "Prince Edward",
-        "Aberdeen",
-        "Lantau Island",
-        "Kennedy Town",
-        "North Point",
-        "Quarry Bay",
-        "Taikoo",
-        "Sai Wan Ho",
-        "Hung Hom",
-        "To Kwa Wan",
-        "Kowloon Tong",
-        "Diamond Hill",
-        "Ngau Tau Kok",
-        "Lam Tin",
-        "Tseung Kwan O",
-        "Clearwater Bay",
-        "Fanling",
-        "Sheung Shui",
-        "Tai Wai",
-        "Ma On Shan",
-        "Tung Chung",
-        "Mui Wo",
-        "Cheung Chau",
-        "Lamma Island",
-    ],
 
-    LA: [
-        "Vientiane",
-        "Vientiane Prefecture",
-        "Phongsali",
-        "Luang Namtha",
-        "Oudomxay",
-        "Bokeo",
-        "Luang Prabang",
-        "Huaphanh",
-        "Xayabury",
-        "Xieng Khouang",
-        "Vientiane Province",
-        "Bolikhamsai",
-        "Khammouane",
-        "Savannakhet",
-        "Saravane",
-        "Sekong",
-        "Champasak",
-        "Attapeu",
-    ],
-
-    MM: [
-        "Yangon",
-        "Mandalay",
-        "Naypyidaw",
-        "Sagaing",
-        "Magway",
-        "Bago",
-        "Ayeyarwady",
-        "Tanintharyi",
-        "Mon",
-        "Kayin",
-        "Kayah",
-        "Chin",
-        "Kachin",
-        "Shan",
-        "Rakhine",
-    ],
-
-    TR: [
-        "Istanbul",
-        "Ankara",
-        "Izmir",
-        "Bursa",
-        "Antalya",
-        "Adana",
-        "Konya",
-        "Gaziantep",
-        "Mersin",
-        "Diyarbakir",
-    ],
-};
+];
 
 // รวม cities ทุกประเทศ
-export const ALL_CITIES = Object.values(REGIONS).flat();
-
-// ดึง cities ของประเทศเดียว
 export function getCitiesByCountry(country: string): string[] {
-    return REGIONS[country] ?? [];
-}
-
-// ดึง cities หลายประเทศ
-export function getCitiesByCountries(countries: string[]): string[] {
-    return countries.flatMap((c) => REGIONS[c] ?? []);
+  return country === "TH" ? TH_CITIES : [];
 }
 
 export function isOtherCity(city: string): boolean {
-    return city === OTHER_CITY;
+  return city === OTHER_CITY;
 }

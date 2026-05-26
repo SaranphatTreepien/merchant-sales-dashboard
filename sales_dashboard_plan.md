@@ -215,7 +215,33 @@ Sale กดมาจาก CMS → เจอหน้า Login → กรอก 
 CMS admin ใช้งานเอง ไม่ต้องอำนวยความสะดวกเยอะ
 
 
+PS C:\Users\Saranphat> docker exec merchant_db psql -U postgres -d merchant_db -c "\dt"
+                 List of relations
+ Schema |         Name          | Type  |  Owner
+--------+-----------------------+-------+----------
+ public | contact_edit_logs     | table | postgres
+ public | contact_edit_requests | table | postgres
+ public | contact_history       | table | postgres
+ public | contact_verifications | table | postgres
+ public | deal_cases            | table | postgres
+ public | place_emails          | table | postgres
+ public | place_facebooks       | table | postgres
+ public | place_instagrams      | table | postgres
+ public | place_lines           | table | postgres
+ public | place_messengers      | table | postgres
+ public | place_note_logs       | table | postgres
+ public | place_notes           | table | postgres
+ public | place_payment_info    | table | postgres
+ public | place_phones          | table | postgres
+ public | place_telegrams       | table | postgres
+ public | place_whatsapps       | table | postgres
+ public | places                | table | postgres
+ public | rescrape_queue        | table | postgres
+ public | scrape_logs           | table | postgres
+ public | users                 | table | postgres
+(20 rows)
 
+PS C:\Users\Saranphat>
 PS C:\Users\Saranphat> docker exec merchant_db psql -U postgres -d merchant_db -c "\di"
                                        List of relations
  Schema |                    Name                    | Type  |  Owner   |         Table

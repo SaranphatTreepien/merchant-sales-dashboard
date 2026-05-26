@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { getCitiesByCountry, ALL_CITIES } from "@/lib/constants/regions";
+import { getCitiesByCountry, TH_CITIES } from "@/lib/constants/regions";
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const isAll = countryParam === "ALL";
   const country = isAll ? null : countryParam;
 
-  const cities = country ? getCitiesByCountry(country) : ALL_CITIES;
+const cities = country ? getCitiesByCountry(country) : TH_CITIES;
   const countryFilter = country ? `AND p.country = '${country}'` : "";
   console.log("[summary] country:", country);
   console.log("[summary] cities.length:", cities.length);
